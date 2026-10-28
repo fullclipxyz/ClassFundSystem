@@ -86,7 +86,8 @@ function StudentView({ session, onLogout }) {
   if (showPasswordPrompt) {
     return (
       <div className="student-layout">
-        <main className="container">
+        {/* Added 'login-container' to fix the stretching issue */}
+        <main className="container login-container">
           <Brand />
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the admin. Please create a new secure password." />
           <form className="login-form" onSubmit={handleChangePassword}>
@@ -436,7 +437,8 @@ function AdminView({ session, onLogout }) {
   if (showPasswordPrompt) {
     return (
       <div className="student-layout">
-        <main className="container">
+        {/* Added 'login-container' to fix the stretching issue */}
+        <main className="container login-container">
           <Brand />
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the Super Admin. Please create a new secure password." />
           <form className="login-form" onSubmit={handleChangePassword}>
