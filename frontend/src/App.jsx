@@ -285,7 +285,7 @@ function AdminView({ session, onLogout }) {
               <div className="empty-state"><h3>No students found</h3></div>
             ) : (
               <div className="table-wrap">
-                <table className="data-table">
+                <table className="data-table" style={{ minWidth: "100%" }}>
                   <thead><tr><th>#</th><th>ID</th><th>Name</th><th className="right">Action</th></tr></thead>
                   <tbody>
                     {students.map((s, i) => (
