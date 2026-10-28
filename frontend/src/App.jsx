@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 
 // 🚨 IMPORTANT: REPLACE THIS URL ONCE YOU DEPLOY TO RENDER
-const API = "https://your-backend-name.onrender.com"; 
+const API = "https://classfundsystem.onrender.com"; 
 
 function money(value) {
   const amount = Number(value ?? 0);
