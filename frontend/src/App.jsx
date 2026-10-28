@@ -135,7 +135,78 @@ function StudentView({ session, onLogout }) {
   );
 }
 
-/* ==================== ADMIN VIEW ==================== */
+/* ==================== SUPER ADMIN VIEW ==================== */
+function SuperAdminView({ session, onLogout }) {
+  const [admins, setAdmins] = useState([]);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } })
+      .then(res => res.json()).then(data => setAdmins(data));
+  }, [session.token]);
+
+  const deleteSection = async (section) => {
+    if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete the ENTIRE ${section} section? This will permanently delete the Admin, all Students, and all their records.`)) return;
+    try {
+      const res = await fetch(`${API}/super-admin/sections/${section}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setMessage(data.message);
+      setAdmins(admins.filter(a => a.section !== section));
+    } catch (err) {
+      setMessage(err.message);
+    }
+  };
+
+  return (
+    <div className="admin-layout">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand">
+            <div className="brand-mark">STI</div>
+            <div className="brand-copy"><strong>SUPER ADMIN</strong><span>MASTER CONTROL</span></div>
+          </div>
+        </div>
+        <div className="sidebar-footer">
+          <div className="admin-info">
+            <p className="admin-name">{session.user.name}</p>
+            <p className="admin-role">Super Admin</p>
+          </div>
+          <button className="button-secondary logout-btn" onClick={onLogout}>Log out</button>
+        </div>
+      </aside>
+
+      <main className="admin-main">
+        {message && <Notice type={message.includes("Success") ? "success" : "error"}>{message}</Notice>}
+        <PageHeader eyebrow="MASTER CONTROL" title="All Sections" description="Manage all admin accounts and sections." />
+        
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>#</th><th>Admin Name</th><th>Admin ID</th><th>Section</th><th className="right">Action</th></tr></thead>
+            <tbody>
+              {admins.map((a, i) => (
+                <tr key={a.id}>
+                  <td>{i + 1}</td>
+                  <td>{a.name}</td>
+                  <td className="mono">{a.student_id}</td>
+                  <td><strong>{a.section}</strong></td>
+                  <td className="right">
+                    <button className="btn-delete" onClick={() => deleteSection(a.section)}>Delete Section</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ==================== ADMIN VIEW (SECTION) ==================== */
 function AdminView({ session, onLogout }) {
   const [report, setReport] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -420,8 +491,10 @@ function App() {
     setSession(null); setStudentId(""); setName(""); setPassword(""); setSection(""); setError("");
   }
 
+  // Routing based on user role
+  if (session && session.user.role === 2) return <SuperAdminView session={session} onLogout={handleLogout} />;
+  if (session && session.user.role === 1) return <AdminView session={session} onLogout={handleLogout} />;
   if (session && session.user.role === 0) return <StudentView session={session} onLogout={handleLogout} />;
-  if (session) return <AdminView session={session} onLogout={handleLogout} />;
 
   return (
     <div className="student-layout">

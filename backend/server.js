@@ -305,6 +305,36 @@ app.get("/admin/report", requireLogin, requireAdmin, async (req, res) => {
   }
 });
 
+// ============ SUPER ADMIN ROUTES ============
+
+app.get("/super-admin/admins", requireLogin, async (req, res) => {
+  if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
+  try {
+    const [rows] = await db.query(
+      "SELECT id, student_id, name, section FROM users WHERE role = 1 ORDER BY section ASC"
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.delete("/super-admin/sections/:sectionName", requireLogin, async (req, res) => {
+  if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
+  
+  const section = req.params.sectionName;
+  try {
+    await db.query("DELETE FROM payments WHERE section = ?", [section]);
+    await db.query("DELETE FROM expenses WHERE section = ?", [section]);
+    await db.query("DELETE FROM users WHERE section = ?", [section]); 
+    
+    res.json({ message: `Successfully deleted the entire ${section} section.` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log("Server running at http://localhost:" + PORT);
