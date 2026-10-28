@@ -169,7 +169,7 @@ function SuperAdminView({ session, onLogout }) {
   const [unblocking, setUnblocking] = useState(false);
   const [logs, setLogs] = useState([]);
   const [showLogs, setShowLogs] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Added for mobile menu
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } }).then(res => res.json()).then(data => setAdmins(data));
@@ -234,7 +234,6 @@ function SuperAdminView({ session, onLogout }) {
   return (
     <div className="admin-layout">
       
-      {/* MOBILE HEADER ADDED FOR SUPER ADMIN */}
       <div className="mobile-header">
         <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>SUPER ADMIN</strong><span>MASTER CONTROL</span></div></div>
         <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
@@ -299,10 +298,13 @@ function SuperAdminView({ session, onLogout }) {
             <div className="form-card" style={{ maxWidth: "600px", marginTop: "24px" }}>
               <div className="form-card-heading"><h3>Unblock IP Addresses</h3></div>
               <p style={{ marginBottom: "16px", fontSize: "14px", color: "var(--text-muted)" }}>If a legitimate user gets locked out, you can instantly clear the rate limits here.</p>
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <button onClick={handleUnblockAll} disabled={unblocking} className="btn-warning" style={{ flex: 1, background: "#f59e0b", borderColor: "#f59e0b", color: "white", minWidth: "150px" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
-                <button onClick={fetchLogs} style={{ flex: 1, background: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white", minWidth: "150px" }}>View Blocked Logs</button>
+              
+              {/* CSS CLASS ADDED FOR MOBILE STACKING */}
+              <div className="button-group-mobile">
+                <button onClick={handleUnblockAll} disabled={unblocking} style={{ background: "#f59e0b", borderColor: "#f59e0b", color: "white" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
+                <button onClick={fetchLogs} style={{ background: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white" }}>View Blocked Logs</button>
               </div>
+              
             </div>
           </div>
         )}
@@ -628,7 +630,6 @@ function App() {
   const [loginRole, setLoginRole] = useState("student"); 
 
   useEffect(() => {
-    // CHANGED TO sessionStorage: Clears when browser tab is closed, but stays on refresh
     const saved = sessionStorage.getItem("classFundSession");
     if (saved) {
       try { setSession(JSON.parse(saved)); } catch (e) { sessionStorage.removeItem("classFundSession"); }
@@ -653,14 +654,14 @@ function App() {
         setIsRegistering(false); 
         setError("Admin created! Log in."); 
       } else { 
-        sessionStorage.setItem("classFundSession", JSON.stringify(data)); // Changed to sessionStorage
+        sessionStorage.setItem("classFundSession", JSON.stringify(data)); 
         setSession(data); 
       }
     } catch { setError("Cannot reach server."); } finally { setLoading(false); }
   }
 
   function handleLogout() {
-    sessionStorage.removeItem("classFundSession"); // Changed to sessionStorage
+    sessionStorage.removeItem("classFundSession"); 
     setSession(null); setStudentId(""); setName(""); setPassword(""); setSection(""); setError("");
   }
 

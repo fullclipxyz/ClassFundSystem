@@ -167,7 +167,6 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
   .table-wrap { width: 100%; max-width: 100%; overflow-x: auto; display: block; }
   .data-table { min-width: 600px; }
   
-  /* Keeps table action buttons in a neat row */
   .action-cell {
     display: flex;
     gap: 6px;
@@ -235,10 +234,29 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
 .student-layout .color-card { align-items: center; text-align: center; justify-content: center; min-height: 180px; }
 .student-layout .color-card .stat-value { font-size: 36px; }
 
+/* NEW BUTTON GROUP FIX FOR MOBILE */
+.button-group-mobile {
+  display: flex;
+  gap: 10px;
+  flex-direction: row;
+}
+.button-group-mobile button {
+  flex: 1;
+  padding: 14px;
+}
+
 /* Mobile Tweaks for Dashboard Grid */
 @media (max-width: 600px) {
   .dashboard-grid { grid-template-columns: 1fr; }
   .student-layout .dashboard-grid { grid-template-columns: 1fr; }
   .dashboard-banner { padding: 24px 20px; }
   .dashboard-banner h2 { font-size: 20px; }
+  
+  .stat-grid { grid-template-columns: 1fr; }
+  .form-card { padding: 20px 16px; }
+  
+  /* STACK THE NEW BUTTONS */
+  .button-group-mobile {
+    flex-direction: column;
+  }
 }
