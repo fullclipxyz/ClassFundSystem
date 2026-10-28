@@ -3,35 +3,66 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
 const db = require("./db");
 const { requireLogin, requireAdmin } = require("./auth");
 
 const app = express();
+
+// ==================== SECURITY MIDDLEWARE ====================
+
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
+// Custom handler to log when someone gets blocked
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 10, 
+  message: { error: "Too many login attempts. Please try again after 15 minutes." },
+  standardHeaders: true, 
+  legacyHeaders: false, 
+  handler: async (req, res, next, options) => {
+    try {
+      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      await db.query(
+        "INSERT INTO security_logs (ip_address, event_type) VALUES (?, ?)",
+        [ip, "Blocked (Brute Force)"]
+      );
+    } catch (err) {
+      console.error("Failed to save security log:", err.message);
+    }
+    res.status(options.statusCode).send(options.message);
+  }
+});
+
+app.set('authLimiter', authLimiter);
+
+// ==================== ROUTES ====================
 
 app.get("/", (req, res) => {
   res.json({ message: "Class Fund API is running" });
 });
 
-app.post("/login", async (req, res) => {
+app.post("/login", authLimiter, async (req, res) => {
   try {
     const { studentId, password } = req.body;
 
     if (!studentId || !password) {
-      return res.status(400).json({ error: "ID/Name and password are required" });
+      return res.status(400).json({ error: "ID and password are required" });
     }
 
     const [rows] = await db.query(
-      "SELECT id, student_id, name, password_hash, role, section FROM users WHERE student_id = ? OR name = ?",
-      [studentId, studentId]
+      "SELECT id, student_id, name, password_hash, role, section, is_default_password FROM users WHERE student_id = ?",
+      [studentId]
     );
 
     const user = rows[0];
     const ok = user && (await bcrypt.compare(password, user.password_hash));
 
     if (!ok) {
-      return res.status(401).json({ error: "Wrong ID/Name or password" });
+      return res.status(401).json({ error: "Invalid ID or password" });
     }
 
     const token = jwt.sign(
@@ -42,7 +73,13 @@ app.post("/login", async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, name: user.name, role: user.role, section: user.section },
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        role: user.role, 
+        section: user.section,
+        isDefaultPassword: user.is_default_password === 1
+      },
     });
   } catch (err) {
     console.error(err.message);
@@ -50,12 +87,30 @@ app.post("/login", async (req, res) => {
   }
 });
 
-app.post("/register-admin", async (req, res) => {
+app.post("/register-admin", authLimiter, async (req, res) => {
   try {
     const { studentId, name, password, section } = req.body;
 
     if (!studentId || !name || !password || !section) {
       return res.status(400).json({ error: "All fields are required" });
+    }
+
+    const [existingId] = await db.query(
+      "SELECT id FROM users WHERE student_id = ? AND role IN (1, 2)",
+      [studentId]
+    );
+
+    if (existingId.length > 0) {
+      return res.status(409).json({ error: "This Admin ID is already taken. Please choose another." });
+    }
+
+    const [existingSection] = await db.query(
+      "SELECT id FROM users WHERE section = ? AND role = 1",
+      [section]
+    );
+
+    if (existingSection.length > 0) {
+      return res.status(409).json({ error: "An administrator is already assigned to this section." });
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -67,7 +122,7 @@ app.post("/register-admin", async (req, res) => {
     res.json({ message: "Admin account created successfully!" });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ error: "ID/Username already exists" });
+      return res.status(409).json({ error: "This Admin ID is already taken. Please choose another." });
     }
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
@@ -85,6 +140,15 @@ app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "ID, name and password are required" });
     }
 
+    const [existingId] = await db.query(
+      "SELECT id FROM users WHERE student_id = ? AND role = 0",
+      [studentId]
+    );
+
+    if (existingId.length > 0) {
+      return res.status(409).json({ error: "This Student ID is already registered." });
+    }
+
     const hash = await bcrypt.hash(password, 10);
     await db.query(
       "INSERT INTO users (student_id, name, password_hash, role, section) VALUES (?, ?, ?, 0, ?)",
@@ -94,7 +158,7 @@ app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
     res.json({ message: "Student added to " + section });
   } catch (err) {
     if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ error: "Student ID already exists" });
+      return res.status(409).json({ error: "This Student ID is already registered." });
     }
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
@@ -104,7 +168,11 @@ app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
 app.get("/admin/students", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT id, student_id, name FROM users WHERE role = 0 AND section = ? ORDER BY name ASC",
+      `SELECT id, student_id, name, 
+              DATE_FORMAT(created_at, '%Y-%m-%d %h:%i %p') AS created_at 
+       FROM users 
+       WHERE role = 0 AND section = ? 
+       ORDER BY name ASC`,
       [req.user.section]
     );
     res.json(rows);
@@ -123,6 +191,36 @@ app.delete("/admin/students/:id", requireLogin, requireAdmin, async (req, res) =
       return res.status(404).json({ error: "Student not found in your section" });
     }
     res.json({ message: "Student deleted" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ADMIN: Reset a student's password to default
+app.post("/admin/reset-password", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    const section = req.user.section;
+
+    const [rows] = await db.query(
+      "SELECT id, name FROM users WHERE student_id = ? AND role = 0 AND section = ?",
+      [studentId, section]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Student not found in your section" });
+    }
+
+    const defaultPass = "123456";
+    const hash = await bcrypt.hash(defaultPass, 10);
+
+    await db.query(
+      "UPDATE users SET password_hash = ?, is_default_password = TRUE WHERE id = ?",
+      [hash, rows[0].id]
+    );
+
+    res.json({ message: `Password for ${rows[0].name} reset to default (123456).` });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
@@ -165,7 +263,7 @@ app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
 app.get("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT p.id, p.amount, DATE_FORMAT(p.paid_date, '%Y-%m-%d') AS date,
+      `SELECT p.id, p.amount, DATE_FORMAT(p.paid_date, '%Y-%m-%d %h:%i %p') AS date,
               u.student_id, u.name
        FROM payments p
        JOIN users u ON u.id = p.user_id
@@ -268,6 +366,28 @@ app.get("/me/summary", requireLogin, async (req, res) => {
   }
 });
 
+// CHANGE PASSWORD (For both Admin and Student)
+app.post("/me/change-password", requireLogin, async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.query(
+      "UPDATE users SET password_hash = ?, is_default_password = FALSE WHERE id = ?",
+      [hash, req.user.id]
+    );
+
+    res.json({ message: "Password updated successfully!" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.get("/admin/report", requireLogin, requireAdmin, async (req, res) => {
   try {
     const now = new Date();
@@ -319,6 +439,27 @@ app.get("/super-admin/admins", requireLogin, async (req, res) => {
   }
 });
 
+app.get("/super-admin/sections/:sectionName", requireLogin, async (req, res) => {
+  if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
+  const section = req.params.sectionName;
+
+  try {
+    const [students] = await db.query(
+      "SELECT id, student_id, name FROM users WHERE role = 0 AND section = ? ORDER BY name ASC",
+      [section]
+    );
+
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [section]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [section]);
+    const cashOnHand = Number(allC.total) - Number(allE.total);
+
+    res.json({ students, cashOnHand });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.delete("/super-admin/sections/:sectionName", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
   
@@ -331,6 +472,69 @@ app.delete("/super-admin/sections/:sectionName", requireLogin, async (req, res) 
     res.json({ message: `Successfully deleted the entire ${section} section.` });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/super-admin/reset-limits", requireLogin, async (req, res) => {
+  if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
+  
+  try {
+    const limiter = req.app.get('authLimiter');
+    if (limiter) {
+      limiter.resetKey("*"); 
+    }
+    res.json({ message: "Successfully unblocked all IP addresses." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// SUPER ADMIN: Get security logs
+app.get("/super-admin/logs", requireLogin, async (req, res) => {
+  if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
+  
+  try {
+    const [logs] = await db.query(
+      "SELECT id, ip_address, event_type, created_at FROM security_logs ORDER BY created_at DESC LIMIT 50"
+    );
+    res.json(logs);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// SUPER ADMIN: Reset an Admin's password
+app.post("/super-admin/reset-admin-password", requireLogin, async (req, res) => {
+  if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
+  
+  try {
+    const { adminId } = req.body;
+
+    // Check if the admin exists
+    const [rows] = await db.query(
+      "SELECT id, name FROM users WHERE student_id = ? AND role = 1",
+      [adminId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Admin not found" });
+    }
+
+    // Set password to default "123456" and flag it
+    const defaultPass = "123456";
+    const hash = await bcrypt.hash(defaultPass, 10);
+
+    await db.query(
+      "UPDATE users SET password_hash = ?, is_default_password = TRUE WHERE id = ?",
+      [hash, rows[0].id]
+    );
+
+    res.json({ message: `Password for Admin ${rows[0].name} reset to default (123456).` });
+  } catch (err) {
+    console.error(err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
