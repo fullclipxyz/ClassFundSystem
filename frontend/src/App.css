@@ -99,10 +99,19 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
 .amount-green { color: #059669; font-weight: 500; white-space: nowrap; }
 .amount-red { color: #dc2626; font-weight: 500; white-space: nowrap; }
 
-.btn-delete { padding: 8px 12px; background: white; border: 1px solid #fecaca; color: #dc2626; font-size: 13px; font-weight: 500; border-radius: 4px; -webkit-tap-highlight-color: transparent; }
+/* FIX ACTION BUTTONS IN TABLES */
+.action-cell {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn-delete { padding: 8px 12px; background: white; border: 1px solid #fecaca; color: #dc2626; font-size: 13px; font-weight: 500; border-radius: 4px; -webkit-tap-highlight-color: transparent; white-space: nowrap; }
 .btn-delete:hover { background: #fef2f2; border-color: #fca5a5; }
 
-.btn-inspect { padding: 8px 12px; background: white; border: 1px solid var(--border-color); color: var(--text-main); font-size: 13px; font-weight: 500; border-radius: 4px; -webkit-tap-highlight-color: transparent; }
+.btn-inspect { padding: 8px 12px; background: white; border: 1px solid var(--border-color); color: var(--text-main); font-size: 13px; font-weight: 500; border-radius: 4px; -webkit-tap-highlight-color: transparent; white-space: nowrap; }
 .btn-inspect:hover { background: #f1f5f9; }
 
 /* ==================== EMPTY STATES ==================== */
@@ -158,8 +167,16 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
   .table-wrap { width: 100%; max-width: 100%; overflow-x: auto; display: block; }
   .data-table { min-width: 600px; }
   
+  /* Keeps table action buttons in a neat row */
+  .action-cell {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap; 
+  }
+  
   .page-header { flex-direction: column; align-items: stretch; gap: 12px; }
   .page-header button { width: 100%; }
+  .logout-btn-top { width: 100%; margin-top: 10px; }
   
   h1 { font-size: 22px; }
   h2 { font-size: 18px; }

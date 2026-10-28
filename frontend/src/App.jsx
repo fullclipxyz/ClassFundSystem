@@ -86,7 +86,6 @@ function StudentView({ session, onLogout }) {
   if (showPasswordPrompt) {
     return (
       <div className="student-layout">
-        {/* Added 'login-container' to fix the stretching issue */}
         <main className="container login-container">
           <Brand />
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the admin. Please create a new secure password." />
@@ -108,7 +107,7 @@ function StudentView({ session, onLogout }) {
           eyebrow={`${session.user.section || "STUDENT"} PORTAL`}
           title={`Hi, ${session.user.name}`}
           description="Here's an overview of the class fund."
-          action={<button className="button-secondary" onClick={onLogout}>Log out</button>}
+          action={<button className="button-secondary logout-btn-top" onClick={onLogout}>Log out</button>}
         />
         {loading && <p className="loading-text">Loading your account...</p>}
         <Notice type="error">{error}</Notice>
@@ -170,6 +169,7 @@ function SuperAdminView({ session, onLogout }) {
   const [unblocking, setUnblocking] = useState(false);
   const [logs, setLogs] = useState([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Added for mobile menu
 
   useEffect(() => {
     fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } }).then(res => res.json()).then(data => setAdmins(data));
@@ -229,15 +229,27 @@ function SuperAdminView({ session, onLogout }) {
     } catch (err) { alert(err.message); }
   };
 
+  const handleTabClick = (tab) => { setActiveTab(tab); setMessage(""); setIsSidebarOpen(false); };
+
   return (
     <div className="admin-layout">
-      <aside className="sidebar">
+      
+      {/* MOBILE HEADER ADDED FOR SUPER ADMIN */}
+      <div className="mobile-header">
+        <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>SUPER ADMIN</strong><span>MASTER CONTROL</span></div></div>
+        <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
+      </div>
+
+      {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
+
+      <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
         <div className="sidebar-brand">
           <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>SUPER ADMIN</strong><span>MASTER CONTROL</span></div></div>
+          <button className="close-btn" onClick={() => setIsSidebarOpen(false)}>✕</button>
         </div>
         <nav className="sidebar-nav">
-          <button className={activeTab === "sections" ? "nav-item active" : "nav-item"} onClick={() => { setActiveTab("sections"); setMessage(""); }}>All Sections</button>
-          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} onClick={() => { setActiveTab("security"); setMessage(""); }}>Security</button>
+          <button className={activeTab === "sections" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("sections")}>All Sections</button>
+          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("security")}>Security</button>
         </nav>
         <div className="sidebar-footer">
           <div className="admin-info"><p className="admin-name">{session.user.name}</p><p className="admin-role">Super Admin</p></div>
@@ -261,9 +273,9 @@ function SuperAdminView({ session, onLogout }) {
                       <td>{a.name}</td>
                       <td className="mono">{a.student_id}</td>
                       <td><strong>{a.section}</strong></td>
-                      <td className="right">
+                      <td className="right action-cell">
                         <button className="btn-inspect" onClick={() => inspectSection(a.section)}>Inspect</button>
-                        <button className="btn-inspect" style={{ margin: "0 8px", color: "#dc2626", borderColor: "#fecaca" }} onClick={() => resetAdminPassword(a.student_id, a.name)}>Reset Pass</button>
+                        <button className="btn-inspect" style={{ color: "#dc2626", borderColor: "#fecaca" }} onClick={() => resetAdminPassword(a.student_id, a.name)}>Reset Pass</button>
                         <button className="btn-delete" onClick={() => deleteSection(a.section)}>Delete</button>
                       </td>
                     </tr>
@@ -287,9 +299,9 @@ function SuperAdminView({ session, onLogout }) {
             <div className="form-card" style={{ maxWidth: "600px", marginTop: "24px" }}>
               <div className="form-card-heading"><h3>Unblock IP Addresses</h3></div>
               <p style={{ marginBottom: "16px", fontSize: "14px", color: "var(--text-muted)" }}>If a legitimate user gets locked out, you can instantly clear the rate limits here.</p>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={handleUnblockAll} disabled={unblocking} className="btn-warning" style={{ flex: 1, background: "#f59e0b", borderColor: "#f59e0b", color: "white" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
-                <button onClick={fetchLogs} style={{ flex: 1, background: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white" }}>View Blocked Logs</button>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button onClick={handleUnblockAll} disabled={unblocking} className="btn-warning" style={{ flex: 1, background: "#f59e0b", borderColor: "#f59e0b", color: "white", minWidth: "150px" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
+                <button onClick={fetchLogs} style={{ flex: 1, background: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white", minWidth: "150px" }}>View Blocked Logs</button>
               </div>
             </div>
           </div>
@@ -298,7 +310,7 @@ function SuperAdminView({ session, onLogout }) {
         {showLogs && (
           <div className="modal-overlay">
             <div className="modal-content" style={{ maxWidth: "800px" }}>
-              <div className="modal-header"><h2>Security Logs (Recent Blocks)</h2><button onClick={() => setShowLogs(false)} style={{ display: "block", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", padding: "6px 12px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer", fontSize: "16px" }}>✕</button></div>
+              <div className="modal-header"><h2>Security Logs</h2><button onClick={() => setShowLogs(false)} style={{ display: "block", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", padding: "6px 12px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer", fontSize: "16px" }}>✕</button></div>
               <div className="modal-body">
                 {logs.length === 0 ? <p>No security logs found.</p> : (
                   <div className="table-wrap"><table className="data-table">
@@ -437,7 +449,6 @@ function AdminView({ session, onLogout }) {
   if (showPasswordPrompt) {
     return (
       <div className="student-layout">
-        {/* Added 'login-container' to fix the stretching issue */}
         <main className="container login-container">
           <Brand />
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the Super Admin. Please create a new secure password." />
@@ -511,8 +522,8 @@ function AdminView({ session, onLogout }) {
                     {students.map((s, i) => (
                       <tr key={s.id}>
                         <td>{i + 1}</td><td className="mono">{s.student_id}</td><td>{s.name}</td><td style={{ color: "var(--text-muted)", fontSize: "13px" }}>{s.created_at}</td>
-                        <td className="right">
-                          <button className="btn-inspect" style={{ marginRight: "8px" }} onClick={() => resetStudentPassword(s.student_id)}>Reset Pass</button>
+                        <td className="right action-cell">
+                          <button className="btn-inspect" onClick={() => resetStudentPassword(s.student_id)}>Reset Pass</button>
                           <button className="btn-delete" onClick={() => removeItem(`/admin/students/${s.id}`, "student")}>Delete</button>
                         </td>
                       </tr>
@@ -531,7 +542,7 @@ function AdminView({ session, onLogout }) {
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{payments.map((p, i) => (<tr key={p.id}><td>{i + 1}</td><td className="mono">{p.student_id}</td><td>{p.name}</td><td>{p.date}</td><td className="right amount-green">{money(p.amount)}</td><td className="right"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")}>Delete</button></td></tr>))}</tbody>
+                  <tbody>{payments.map((p, i) => (<tr key={p.id}><td>{i + 1}</td><td className="mono">{p.student_id}</td><td>{p.name}</td><td>{p.date}</td><td className="right amount-green">{money(p.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")}>Delete</button></td></tr>))}</tbody>
                   <tfoot><tr><td colSpan="4"><strong>Total</strong></td><td className="right"><strong>{money(totalPayments)}</strong></td><td></td></tr></tfoot>
                 </table>
               </div>
@@ -546,7 +557,7 @@ function AdminView({ session, onLogout }) {
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>#</th><th>Description</th><th>Date</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{expenses.map((e, i) => (<tr key={e.id}><td>{i + 1}</td><td>{e.description}</td><td>{e.date}</td><td className="right amount-red">{money(e.amount)}</td><td className="right"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")}>Delete</button></td></tr>))}</tbody>
+                  <tbody>{expenses.map((e, i) => (<tr key={e.id}><td>{i + 1}</td><td>{e.description}</td><td>{e.date}</td><td className="right amount-red">{money(e.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")}>Delete</button></td></tr>))}</tbody>
                   <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
                 </table>
               </div>
@@ -617,9 +628,10 @@ function App() {
   const [loginRole, setLoginRole] = useState("student"); 
 
   useEffect(() => {
-    const saved = localStorage.getItem("classFundSession");
+    // CHANGED TO sessionStorage: Clears when browser tab is closed, but stays on refresh
+    const saved = sessionStorage.getItem("classFundSession");
     if (saved) {
-      try { setSession(JSON.parse(saved)); } catch (e) { localStorage.removeItem("classFundSession"); }
+      try { setSession(JSON.parse(saved)); } catch (e) { sessionStorage.removeItem("classFundSession"); }
     }
   }, []);
 
@@ -641,14 +653,14 @@ function App() {
         setIsRegistering(false); 
         setError("Admin created! Log in."); 
       } else { 
-        localStorage.setItem("classFundSession", JSON.stringify(data)); 
+        sessionStorage.setItem("classFundSession", JSON.stringify(data)); // Changed to sessionStorage
         setSession(data); 
       }
     } catch { setError("Cannot reach server."); } finally { setLoading(false); }
   }
 
   function handleLogout() {
-    localStorage.removeItem("classFundSession"); 
+    sessionStorage.removeItem("classFundSession"); // Changed to sessionStorage
     setSession(null); setStudentId(""); setName(""); setPassword(""); setSection(""); setError("");
   }
 
