@@ -18,7 +18,7 @@ app.use(express.json());
 const studentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 5, 
-  message: { error: "Too many login attempts. Please try again after 15 minutes." },
+  message: { error: "Invalid ID or password" }, // Generic message for hackers
   standardHeaders: true, 
   legacyHeaders: false, 
   handler: async (req, res, next, options) => {
@@ -42,23 +42,24 @@ app.set('studentLimiter', studentLimiter);
 
 app.get("/", (req, res) => { res.json({ message: "Class Fund API is running" }); });
 
-// ==================== LOGIN (ROLE CHECK ADDED) ====================
+// ==================== LOGIN ====================
 app.post("/login", async (req, res, next) => {
   try {
     const { studentId, password, loginRole } = req.body;
-    if (!studentId || !password) return res.status(400).json({ error: "ID and password are required" });
+    if (!studentId || !password) return res.status(400).json({ error: "Invalid ID or password" });
 
     const [rows] = await db.query("SELECT id, student_id, name, password_hash, role, section, is_default_password FROM users WHERE student_id = ?", [studentId]);
     const user = rows[0];
     
+    // If user doesn't exist, send generic error
     if (!user) return res.status(401).json({ error: "Invalid ID or password" });
 
-    // ROLE CHECK: Ensure they are logging in from the correct tab
+    // ROLE CHECK: Ensure they are logging in from the correct tab, but send generic error
     if (loginRole === "student" && user.role !== 0) {
-      return res.status(403).json({ error: "This is an Admin account. Please use the Administrator tab." });
+      return res.status(401).json({ error: "Invalid ID or password" });
     }
     if (loginRole === "admin" && user.role === 0) {
-      return res.status(403).json({ error: "This is a Student account. Please use the Student tab." });
+      return res.status(401).json({ error: "Invalid ID or password" });
     }
 
     // ONLY apply rate limit if they are a student (role === 0)
@@ -184,7 +185,6 @@ app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) 
   }
 });
 
-// ============ LEDGER (FIXED TO INCLUDE DELETED EXPENSES) ============
 app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(

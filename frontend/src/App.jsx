@@ -811,16 +811,28 @@ function App() {
     try {
       const res = await fetch(`${API}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
-      if (!res.ok) { setError(data.error); return; }
+      
+      // THE FIX: Check if there is an error OR if the response is not OK
+      if (!res.ok || data.error) { 
+        setError(data.error || "Invalid ID or password"); 
+        setLoading(false);
+        return; 
+      }
       
       if (isRegistering) { 
         setIsRegistering(false); 
         setError("Admin created! Log in."); 
-      } else { 
+      } else if (data.token) { 
         sessionStorage.setItem("classFundSession", JSON.stringify(data)); 
         setSession(data); 
+      } else {
+        setError("Invalid ID or password");
       }
-    } catch { setError("Cannot reach server."); } finally { setLoading(false); }
+    } catch { 
+      setError("Cannot reach server."); 
+    } finally { 
+      setLoading(false); 
+    }
   }
 
   function handleLogout() {
