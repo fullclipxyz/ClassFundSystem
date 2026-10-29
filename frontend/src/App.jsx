@@ -299,7 +299,6 @@ function SuperAdminView({ session, onLogout }) {
               <div className="form-card-heading"><h3>Unblock IP Addresses</h3></div>
               <p style={{ marginBottom: "16px", fontSize: "14px", color: "var(--text-muted)" }}>If a legitimate user gets locked out, you can instantly clear the rate limits here.</p>
               
-              {/* CSS CLASS ADDED FOR MOBILE STACKING */}
               <div className="button-group-mobile">
                 <button onClick={handleUnblockAll} disabled={unblocking} style={{ background: "#f59e0b", borderColor: "#f59e0b", color: "white" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
                 <button onClick={fetchLogs} style={{ background: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white" }}>View Blocked Logs</button>
@@ -356,7 +355,12 @@ function AdminView({ session, onLogout }) {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  
+  // SEPARATED BUSY STATES
+  const [busyStudent, setBusyStudent] = useState(false);
+  const [busyPayment, setBusyPayment] = useState(false);
+  const [busyExpense, setBusyExpense] = useState(false);
+  const [busyAction, setBusyAction] = useState(false); // For delete/reset actions
   
   const [activeTab, setActiveTab] = useState("overview"); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -414,33 +418,39 @@ function AdminView({ session, onLogout }) {
     return () => { active = false; };
   }, [session.token]);
 
-  async function submit(path, body, reset) {
-    if (busy) return;
+  // UPDATED SUBMIT FUNCTION
+  async function submit(path, body, reset, setBusy, isBusy) {
+    if (isBusy) return;
     setMessage(""); setBusy(true);
     try {
       const data = await call(path, "POST", body);
       setMessage(data.message || "Success"); setMessageType("success");
       reset(); await loadAll();
-    } catch (err) { setMessage(err.message || "Error"); setMessageType("error"); } finally { setBusy(false); }
+    } catch (err) { 
+      setMessage(err.message || "Error"); setMessageType("error"); 
+    } finally { 
+      setBusy(false); 
+    }
   }
 
   async function removeItem(path, label) {
-    if (busy) return;
+    if (busyAction) return;
     if (!window.confirm(`Delete this ${label}?`)) return;
-    setBusy(true); setMessage("");
+    setBusyAction(true); setMessage("");
     try {
       const data = await call(path, "DELETE");
       setMessage(data.message || "Deleted"); setMessageType("success"); await loadAll();
-    } catch (err) { setMessage(err.message || "Error"); setMessageType("error"); } finally { setBusy(false); }
+    } catch (err) { setMessage(err.message || "Error"); setMessageType("error"); } finally { setBusyAction(false); }
   }
 
   async function resetStudentPassword(studentId) {
+    if (busyAction) return;
     if (!window.confirm(`Reset password for student ${studentId}?`)) return;
-    setBusy(true); setMessage("");
+    setBusyAction(true); setMessage("");
     try {
       const data = await call("/admin/reset-password", "POST", { studentId });
       setMessage(data.message); setMessageType("success");
-    } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusy(false); }
+    } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
   }
 
   const totalPayments = payments.reduce((s, p) => s + Number(p.amount), 0);
@@ -525,8 +535,8 @@ function AdminView({ session, onLogout }) {
                       <tr key={s.id}>
                         <td>{i + 1}</td><td className="mono">{s.student_id}</td><td>{s.name}</td><td style={{ color: "var(--text-muted)", fontSize: "13px" }}>{s.created_at}</td>
                         <td className="right action-cell">
-                          <button className="btn-inspect" onClick={() => resetStudentPassword(s.student_id)}>Reset Pass</button>
-                          <button className="btn-delete" onClick={() => removeItem(`/admin/students/${s.id}`, "student")}>Delete</button>
+                          <button className="btn-inspect" onClick={() => resetStudentPassword(s.student_id)} disabled={busyAction}>Reset Pass</button>
+                          <button className="btn-delete" onClick={() => removeItem(`/admin/students/${s.id}`, "student")} disabled={busyAction}>Delete</button>
                         </td>
                       </tr>
                     ))}
@@ -544,7 +554,7 @@ function AdminView({ session, onLogout }) {
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{payments.map((p, i) => (<tr key={p.id}><td>{i + 1}</td><td className="mono">{p.student_id}</td><td>{p.name}</td><td>{p.date}</td><td className="right amount-green">{money(p.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")}>Delete</button></td></tr>))}</tbody>
+                  <tbody>{payments.map((p, i) => (<tr key={p.id}><td>{i + 1}</td><td className="mono">{p.student_id}</td><td>{p.name}</td><td>{p.date}</td><td className="right amount-green">{money(p.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button></td></tr>))}</tbody>
                   <tfoot><tr><td colSpan="4"><strong>Total</strong></td><td className="right"><strong>{money(totalPayments)}</strong></td><td></td></tr></tfoot>
                 </table>
               </div>
@@ -559,7 +569,7 @@ function AdminView({ session, onLogout }) {
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>#</th><th>Description</th><th>Date</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{expenses.map((e, i) => (<tr key={e.id}><td>{i + 1}</td><td>{e.description}</td><td>{e.date}</td><td className="right amount-red">{money(e.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")}>Delete</button></td></tr>))}</tbody>
+                  <tbody>{expenses.map((e, i) => (<tr key={e.id}><td>{i + 1}</td><td>{e.description}</td><td>{e.date}</td><td className="right amount-red">{money(e.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button></td></tr>))}</tbody>
                   <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
                 </table>
               </div>
@@ -572,15 +582,15 @@ function AdminView({ session, onLogout }) {
             <PageHeader eyebrow="ADMIN ACTIONS" title="Manage Class Fund" description="Add students, log payments and expenses." />
             <div className="admin-grid">
               
-              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" })); }}>
+              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }}>
                 <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
                 <label>Student ID</label><input placeholder="e.g. 2024001" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} required />
                 <label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required />
                 <label>Password</label><input type="password" placeholder="Create a password" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} required />
-                <button type="submit" disabled={busy}>{busy ? "Wait..." : "Add student"}</button>
+                <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
               </form>
 
-              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }); }}>
+              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }}>
                 <div className="form-card-heading"><span className="form-icon">02</span><div><h3>Record payment</h3><p>Record a student's contribution.</p></div></div>
                 <label>Student ID</label>
                 <div className="custom-dropdown-container">
@@ -597,14 +607,14 @@ function AdminView({ session, onLogout }) {
                   )}
                 </div>
                 <label>Amount (PHP)</label><input type="number" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required />
-                <button type="submit" disabled={busy}>{busy ? "Wait..." : "Record payment"}</button>
+                <button type="submit" disabled={busyPayment}>{busyPayment ? "Wait..." : "Record payment"}</button>
               </form>
 
-              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" })); }}>
+              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
                 <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
                 <label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required />
                 <label>Amount (PHP)</label><input type="number" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required />
-                <button type="submit" disabled={busy}>{busy ? "Wait..." : "Save expense"}</button>
+                <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
               </form>
 
             </div>
