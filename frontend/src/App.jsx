@@ -35,6 +35,54 @@ function Notice({ children, type = "info" }) {
   return <div className={`notice notice-${type}`} role="status">{children}</div>;
 }
 
+/* ==================== PAGINATION COMPONENT ==================== */
+function Pagination({ currentPage, totalPages, onPageChange }) {
+  return (
+    <div className="pagination-container">
+      <button 
+        onClick={() => onPageChange(Math.max(currentPage - 1, 1))} 
+        disabled={currentPage === 1}
+        className="pagination-btn"
+        style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: currentPage === 1 ? 0.5 : 1 }}
+      >
+        &lt; Back
+      </button>
+      
+      <div className="pagination-numbers" style={{ display: "flex", gap: "8px" }}>
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNumber => (
+          <button
+            key={pageNumber}
+            onClick={() => onPageChange(pageNumber)}
+            style={{ 
+              padding: "8px 14px", 
+              background: currentPage === pageNumber ? "#0f172a" : "white", 
+              color: currentPage === pageNumber ? "white" : "var(--text-main)", 
+              border: "1px solid var(--border-color)", 
+              borderRadius: "6px",
+              fontWeight: "600"
+            }}
+          >
+            {pageNumber}
+          </button>
+        ))}
+      </div>
+
+      <div className="pagination-mobile-label" style={{ display: "none" }}>
+        Page {currentPage} of {totalPages}
+      </div>
+
+      <button 
+        onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))} 
+        disabled={currentPage === totalPages}
+        className="pagination-btn"
+        style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: currentPage === totalPages ? 0.5 : 1 }}
+      >
+        Next &gt;
+      </button>
+    </div>
+  );
+}
+
 /* ==================== STUDENT VIEW ==================== */
 function StudentView({ session, onLogout }) {
   const [summary, setSummary] = useState(null);
@@ -377,10 +425,13 @@ function AdminView({ session, onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Ledger Filter & Pagination State
-  const [ledgerSearch, setLedgerSearch] = useState("");
-  const [ledgerPage, setLedgerPage] = useState(1);
+  // Pagination States for all tables
   const itemsPerPage = 10;
+  const [studentPage, setStudentPage] = useState(1);
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [expensePage, setExpensePage] = useState(1);
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerSearch, setLedgerSearch] = useState("");
 
   const [student, setStudent] = useState({ studentId: "", name: "", password: "" });
   const [payment, setPayment] = useState({ studentId: "", amount: "" });
@@ -486,24 +537,32 @@ function AdminView({ session, onLogout }) {
   const totalPayments = payments.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
 
-  // Ledger Filter Logic
+  // Pagination Calculation for Students
+  const studentTotalPages = Math.ceil(students.length / itemsPerPage) || 1;
+  const currentStudents = students.slice((studentPage - 1) * itemsPerPage, studentPage * itemsPerPage);
+
+  // Pagination Calculation for Payments
+  const paymentTotalPages = Math.ceil(payments.length / itemsPerPage) || 1;
+  const currentPayments = payments.slice((paymentPage - 1) * itemsPerPage, paymentPage * itemsPerPage);
+
+  // Pagination Calculation for Expenses
+  const expenseTotalPages = Math.ceil(expenses.length / itemsPerPage) || 1;
+  const currentExpenses = expenses.slice((expensePage - 1) * itemsPerPage, expensePage * itemsPerPage);
+
+  // Ledger Filter & Pagination
   const filteredLedger = ledger.filter(item => {
     if (!ledgerSearch) return true;
     const searchLower = ledgerSearch.toLowerCase();
     return item.description.toLowerCase().includes(searchLower) || item.type.toLowerCase().includes(searchLower);
   });
-
-  // Pagination Logic
-  const totalPages = Math.ceil(filteredLedger.length / itemsPerPage) || 1;
-  const indexOfLastItem = ledgerPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentLedgerItems = filteredLedger.slice(indexOfFirstItem, indexOfLastItem);
+  const ledgerTotalPages = Math.ceil(filteredLedger.length / itemsPerPage) || 1;
+  const currentLedgerItems = filteredLedger.slice((ledgerPage - 1) * itemsPerPage, ledgerPage * itemsPerPage);
 
   const handleTabClick = (tab) => { 
     setActiveTab(tab); 
     setMessage(""); 
     setIsSidebarOpen(false); 
-    setLedgerPage(1); // Reset page when clicking tab
+    setStudentPage(1); setPaymentPage(1); setExpensePage(1); setLedgerPage(1);
   };
 
   if (showPasswordPrompt) {
@@ -646,16 +705,9 @@ function AdminView({ session, onLogout }) {
           <div className="tab-content fade-in">
             <PageHeader eyebrow="FINANCIAL RECORD" title="General Ledger" description="A complete history of all money in and money out." />
 
-            {/* SEARCH FILTER */}
             <div style={{ marginBottom: "20px", maxWidth: "400px" }}>
               <label>Filter by Student (Name or ID)</label>
-              <input 
-                type="text" 
-                placeholder="Search by Student ID or Name..." 
-                value={ledgerSearch} 
-                onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} 
-                style={{ marginBottom: 0 }}
-              />
+              <input type="text" placeholder="Search by Student ID or Name..." value={ledgerSearch} onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} style={{ marginBottom: 0 }} />
             </div>
 
             {filteredLedger.length === 0 ? (
@@ -664,13 +716,11 @@ function AdminView({ session, onLogout }) {
               <>
                 <div className="table-wrap ledger-card">
                   <table className="data-table">
-                    <thead>
-                      <tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr>
-                    </thead>
+                    <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr></thead>
                     <tbody>
                       {currentLedgerItems.map((item, i) => (
                         <tr key={`${item.type}-${item.id}`}>
-                          <td data-label="#">{indexOfFirstItem + i + 1}</td>
+                          <td data-label="#">{(ledgerPage - 1) * itemsPerPage + i + 1}</td>
                           <td data-label="Date">{new Date(item.date).toLocaleDateString()}</td>
                           <td data-label="Type">
                             <span style={{ padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2", color: item.type === "Deposit" ? "#065f46" : "#991b1b" }}>
@@ -686,52 +736,7 @@ function AdminView({ session, onLogout }) {
                     </tbody>
                   </table>
                 </div>
-
-                {/* PAGINATION CONTROLS */}
-                <div className="pagination-container">
-                  <button 
-                    onClick={() => setLedgerPage(prev => Math.max(prev - 1, 1))} 
-                    disabled={ledgerPage === 1}
-                    className="pagination-btn"
-                    style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === 1 ? 0.5 : 1 }}
-                  >
-                    &lt; Back
-                  </button>
-                  
-                  {/* Desktop Page Numbers */}
-                  <div className="pagination-numbers" style={{ display: "flex", gap: "8px" }}>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNumber => (
-                      <button
-                        key={pageNumber}
-                        onClick={() => setLedgerPage(pageNumber)}
-                        style={{ 
-                          padding: "8px 14px", 
-                          background: ledgerPage === pageNumber ? "#0f172a" : "white", 
-                          color: ledgerPage === pageNumber ? "white" : "var(--text-main)", 
-                          border: "1px solid var(--border-color)", 
-                          borderRadius: "6px",
-                          fontWeight: "600"
-                        }}
-                      >
-                        {pageNumber}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Mobile Only Label */}
-                  <div className="pagination-mobile-label" style={{ display: "none" }}>
-                    Page {ledgerPage} of {totalPages}
-                  </div>
-
-                  <button 
-                    onClick={() => setLedgerPage(prev => Math.min(prev + 1, totalPages))} 
-                    disabled={ledgerPage === totalPages}
-                    className="pagination-btn"
-                    style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === totalPages ? 0.5 : 1 }}
-                  >
-                    Next &gt;
-                  </button>
-                </div>
+                <Pagination currentPage={ledgerPage} totalPages={ledgerTotalPages} onPageChange={setLedgerPage} />
               </>
             )}
           </div>
@@ -754,25 +759,28 @@ function AdminView({ session, onLogout }) {
             {students.length === 0 ? (
               <div className="empty-state"><h3>No students found</h3></div>
             ) : (
-              <div className="table-wrap">
-                <table className="data-table" style={{ minWidth: "100%" }}>
-                  <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Account Created</th><th className="right">Action</th></tr></thead>
-                  <tbody>
-                    {students.map((s, i) => (
-                      <tr key={s.id}>
-                        <td data-label="#">{i + 1}</td>
-                        <td data-label="ID" className="mono">{s.student_id}</td>
-                        <td data-label="Name">{s.name}</td>
-                        <td data-label="Created" style={{ color: "var(--text-muted)", fontSize: "13px" }}>{s.created_at}</td>
-                        <td data-label="Action" className="right action-cell">
-                          <button className="btn-inspect" onClick={() => resetStudentPassword(s.student_id)} disabled={busyAction}>Reset Pass</button>
-                          <button className="btn-delete" onClick={() => removeItem(`/admin/students/${s.id}`, "student")} disabled={busyAction}>Delete</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="table-wrap">
+                  <table className="data-table" style={{ minWidth: "100%" }}>
+                    <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Account Created</th><th className="right">Action</th></tr></thead>
+                    <tbody>
+                      {currentStudents.map((s, i) => (
+                        <tr key={s.id}>
+                          <td data-label="#">{(studentPage - 1) * itemsPerPage + i + 1}</td>
+                          <td data-label="ID" className="mono">{s.student_id}</td>
+                          <td data-label="Name">{s.name}</td>
+                          <td data-label="Created" style={{ color: "var(--text-muted)", fontSize: "13px" }}>{s.created_at}</td>
+                          <td data-label="Action" className="right action-cell">
+                            <button className="btn-inspect" onClick={() => resetStudentPassword(s.student_id)} disabled={busyAction}>Reset Pass</button>
+                            <button className="btn-delete" onClick={() => removeItem(`/admin/students/${s.id}`, "student")} disabled={busyAction}>Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Pagination currentPage={studentPage} totalPages={studentTotalPages} onPageChange={setStudentPage} />
+              </>
             )}
           </div>
         )}
@@ -804,22 +812,25 @@ function AdminView({ session, onLogout }) {
             </div>
 
             {payments.length === 0 ? <div className="empty-state"><h3>No payments</h3></div> : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{payments.map((p, i) => (
-                    <tr key={p.id}>
-                      <td data-label="#">{i + 1}</td>
-                      <td data-label="ID" className="mono">{p.student_id}</td>
-                      <td data-label="Name">{p.name}</td>
-                      <td data-label="Date">{p.date}</td>
-                      <td data-label="Amount" className="right amount-green">{money(p.amount)}</td>
-                      <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button></td>
-                    </tr>
-                  ))}</tbody>
-                  <tfoot><tr><td colSpan="4"><strong>Total</strong></td><td className="right"><strong>{money(totalPayments)}</strong></td><td></td></tr></tfoot>
-                </table>
-              </div>
+              <>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
+                    <tbody>{currentPayments.map((p, i) => (
+                      <tr key={p.id}>
+                        <td data-label="#">{(paymentPage - 1) * itemsPerPage + i + 1}</td>
+                        <td data-label="ID" className="mono">{p.student_id}</td>
+                        <td data-label="Name">{p.name}</td>
+                        <td data-label="Date">{p.date}</td>
+                        <td data-label="Amount" className="right amount-green">{money(p.amount)}</td>
+                        <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button></td>
+                      </tr>
+                    ))}</tbody>
+                    <tfoot><tr><td colSpan="4"><strong>Total</strong></td><td className="right"><strong>{money(totalPayments)}</strong></td><td></td></tr></tfoot>
+                  </table>
+                </div>
+                <Pagination currentPage={paymentPage} totalPages={paymentTotalPages} onPageChange={setPaymentPage} />
+              </>
             )}
           </div>
         )}
@@ -838,21 +849,24 @@ function AdminView({ session, onLogout }) {
             </div>
 
             {expenses.length === 0 ? <div className="empty-state"><h3>No expenses</h3></div> : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>#</th><th>Description</th><th>Date</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{expenses.map((e, i) => (
-                    <tr key={e.id}>
-                      <td data-label="#">{i + 1}</td>
-                      <td data-label="Description">{e.description}</td>
-                      <td data-label="Date">{e.date}</td>
-                      <td data-label="Amount" className="right amount-red">{money(e.amount)}</td>
-                      <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button></td>
-                    </tr>
-                  ))}</tbody>
-                  <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
-                </table>
-              </div>
+              <>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead><tr><th>#</th><th>Description</th><th>Date</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
+                    <tbody>{currentExpenses.map((e, i) => (
+                      <tr key={e.id}>
+                        <td data-label="#">{(expensePage - 1) * itemsPerPage + i + 1}</td>
+                        <td data-label="Description">{e.description}</td>
+                        <td data-label="Date">{e.date}</td>
+                        <td data-label="Amount" className="right amount-red">{money(e.amount)}</td>
+                        <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button></td>
+                      </tr>
+                    ))}</tbody>
+                    <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
+                  </table>
+                </div>
+                <Pagination currentPage={expensePage} totalPages={expenseTotalPages} onPageChange={setExpensePage} />
+              </>
             )}
           </div>
         )}
