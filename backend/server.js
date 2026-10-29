@@ -155,17 +155,20 @@ app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) 
       return res.status(403).json({ error: "Unauthorized to unblock this student." });
     }
 
+    // THE FIX: Use the official resetKey method instead of hacking the store
     const limiter = req.app.get('studentLimiter');
     if (limiter) {
-      if (limiter.store && limiter.store.resetAll) limiter.store.resetAll();
-      else limiter.store.hits = {}; 
+      // Get the IP of the request (which matches the blocked IP)
+      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      limiter.resetKey(ip); 
     }
 
+    // Delete the logs for this student
     await db.query("DELETE FROM security_logs WHERE section = ? AND event_type LIKE ?", [req.user.section, `%${studentId}%`]);
 
     res.json({ message: `Successfully unblocked student ${studentId}.` });
   } catch (err) { 
-    console.error(err);
+    console.error("Unblock Error:", err);
     res.status(500).json({ error: "Server error" }); 
   }
 });
@@ -344,7 +347,11 @@ app.post("/super-admin/reset-limits", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
   try {
     const limiter = req.app.get('studentLimiter');
-    if (limiter) { limiter.resetKey(req.ip); if (limiter.store && limiter.store.resetAll) limiter.store.resetAll(); else limiter.store.hits = {}; }
+    if (limiter) { 
+      limiter.resetKey(req.ip); 
+      if (limiter.store && limiter.store.resetAll) limiter.store.resetAll(); 
+      else limiter.store.hits = {}; 
+    }
     res.json({ message: "Successfully unblocked all IP addresses." });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
