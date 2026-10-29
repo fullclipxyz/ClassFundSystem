@@ -102,14 +102,13 @@ app.post("/register-admin", async (req, res) => {
   }
 });
 
-// ============ STUDENT DEPOSIT REQUESTS (FIXED SPAM) ============
+// ============ STUDENT DEPOSIT REQUESTS ============
 app.post("/me/deposit", requireLogin, async (req, res) => {
   try {
     const { amount } = req.body;
     const money = Number(amount);
     if (!(money > 0)) return res.status(400).json({ error: "Valid positive amount required" });
 
-    // THE FIX: Check for pending deposit
     const [existing] = await db.query("SELECT id FROM deposit_requests WHERE user_id = ? AND status = 'pending'", [req.user.id]);
     if (existing.length > 0) {
       return res.status(400).json({ error: "You already have a pending deposit. Please wait for the Admin to approve it." });
@@ -368,11 +367,12 @@ app.post("/super-admin/reset-limits", requireLogin, async (req, res) => {
     const limiter = req.app.get('studentLimiter');
     if (limiter) { 
       limiter.resetKey(req.ip); 
-      if (limiter.store && limiter.store.resetAll) limiter.store.resetAll(); 
-      else limiter.store.hits = {}; 
     }
     res.json({ message: "Successfully unblocked all IP addresses." });
-  } catch (err) { res.status(500).json({ error: "Server error" }); }
+  } catch (err) { 
+    console.error("Reset Limit Error:", err);
+    res.status(500).json({ error: "Server error" }); 
+  }
 });
 
 app.get("/super-admin/logs", requireLogin, async (req, res) => {
