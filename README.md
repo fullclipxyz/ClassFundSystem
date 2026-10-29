@@ -2,7 +2,7 @@
 
 A full-stack web application designed to help students and administrators manage class funds efficiently. Built with React, Node.js, and a cloud-hosted MySQL database.
 
-🚀 **Live Demo:** [https://class-fund-system-one.vercel.app](https://class-fund-system-one.vercel.app) 
+🚀 **Live Demo:** [https://https://classfund-portal.vercel.app/](https://https://classfund-portal.vercel.app/) 
 *(Note: The backend is hosted on Render's free tier, so the first login might take 30-50 seconds while the server wakes up.)*
 
 📌 **Project Overview**
