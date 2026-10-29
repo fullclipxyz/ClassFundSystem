@@ -45,6 +45,10 @@ function StudentView({ session, onLogout }) {
   const [newPassword, setNewPassword] = useState("");
   const [changingPass, setChangingPass] = useState(false);
 
+  const [depositAmount, setDepositAmount] = useState("");
+  const [depositMessage, setDepositMessage] = useState("");
+  const [depositLoading, setDepositLoading] = useState(false);
+
   useEffect(() => {
     let active = true;
     async function load() {
@@ -54,11 +58,7 @@ function StudentView({ session, onLogout }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not load your summary.");
         if (active) setSummary(data);
-      } catch (err) {
-        if (active) setError(err.message || "Cannot reach the server.");
-      } finally {
-        if (active) setLoading(false);
-      }
+      } catch (err) { if (active) setError(err.message || "Cannot reach the server."); } finally { if (active) setLoading(false); }
     }
     load();
     return () => { active = false; };
@@ -76,11 +76,23 @@ function StudentView({ session, onLogout }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setShowPasswordPrompt(false);
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setChangingPass(false);
-    }
+    } catch (err) { alert(err.message); } finally { setChangingPass(false); }
+  }
+
+  async function handleDeposit(e) {
+    e.preventDefault();
+    setDepositLoading(true); setDepositMessage("");
+    try {
+      const res = await fetch(`${API}/me/deposit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify({ amount: depositAmount })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setDepositMessage(data.message);
+      setDepositAmount("");
+    } catch (err) { setDepositMessage(err.message); } finally { setDepositLoading(false); }
   }
 
   if (showPasswordPrompt) {
@@ -103,50 +115,43 @@ function StudentView({ session, onLogout }) {
     <div className="student-layout">
       <main className="container">
         <Brand />
-        <PageHeader
-          eyebrow={`${session.user.section || "STUDENT"} PORTAL`}
-          title={`Hi, ${session.user.name}`}
-          description="Here's an overview of the class fund."
-          action={<button className="button-secondary logout-btn-top" onClick={onLogout}>Log out</button>}
-        />
+        <PageHeader eyebrow={`${session.user.section || "STUDENT"} PORTAL`} title={`Hi, ${session.user.name}`} description="Here's an overview of the class fund." action={<button className="button-secondary logout-btn-top" onClick={onLogout}>Log out</button>} />
         {loading && <p className="loading-text">Loading your account...</p>}
         <Notice type="error">{error}</Notice>
+        
         {summary && !loading && (
           <>
             <div className="dashboard-grid">
-              <div className="color-card card-pink">
-                <p className="stat-label">Total Shared</p>
-                <p className="stat-value">{money(summary.paid)}</p>
-                <p className="stat-detail">All your contributions</p>
-              </div>
-
-              <div className="color-card card-blue">
-                <p className="stat-label">{session.user.section} Fund</p>
-                <p className="stat-value">{money(summary.totalClassFund)}</p>
-                <p className="stat-detail">Available section balance</p>
-              </div>
+              <div className="color-card card-pink"><p className="stat-label">Total Shared</p><p className="stat-value">{money(summary.paid)}</p><p className="stat-detail">All your contributions</p></div>
+              <div className="color-card card-blue"><p className="stat-label">{session.user.section} Fund</p><p className="stat-value">{money(summary.totalClassFund)}</p><p className="stat-detail">Available section balance</p></div>
             </div>
 
-            <section className="content-section">
-              <div className="section-heading">
-                <div><h2>My Contributions</h2><p>Review your recorded payments.</p></div>
-                <span className="count-badge">{summary.payments.length} records</span>
+            <section className="content-section" style={{ marginBottom: "32px" }}>
+              <div className="form-card">
+                <div className="form-card-heading">
+                  <span className="form-icon" style={{ background: "#ecfdf5", color: "#059669" }}>₱</span>
+                  <div><h3>Submit a Deposit</h3><p>Send money to the class fund. Admin will verify it.</p></div>
+                </div>
+                {depositMessage && <Notice type={depositMessage.includes("submitted") ? "success" : "error"}>{depositMessage}</Notice>}
+                <form onSubmit={handleDeposit} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <div style={{ flex: 1, minWidth: "200px" }}>
+                    <label>Amount (PHP)</label>
+                    <input type="number" placeholder="0.00" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} required style={{ marginBottom: 0 }} />
+                  </div>
+                  <button type="submit" disabled={depositLoading} style={{ background: "#059669", borderColor: "#059669", padding: "12px 24px" }}>{depositLoading ? "Submitting..." : "Submit Deposit"}</button>
+                </form>
               </div>
+            </section>
+
+            <section className="content-section">
+              <div className="section-heading"><div><h2>My Contributions</h2><p>Review your recorded payments.</p></div><span className="count-badge">{summary.payments.length} records</span></div>
               {summary.payments.length === 0 ? (
                 <div className="empty-state"><div className="empty-icon">₱</div><h3>No payments yet</h3></div>
               ) : (
                 <div className="table-wrap">
                   <table className="data-table">
                     <thead><tr><th>#</th><th>Date</th><th className="right">Amount</th></tr></thead>
-                    <tbody>
-                      {summary.payments.map((payment, index) => (
-                        <tr key={payment.id ?? index}>
-                          <td>{index + 1}</td>
-                          <td>{payment.date}</td>
-                          <td className="right amount-green">{money(payment.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
+                    <tbody>{summary.payments.map((payment, index) => (<tr key={payment.id ?? index}><td>{index + 1}</td><td>{payment.date}</td><td className="right amount-green">{money(payment.amount)}</td></tr>))}</tbody>
                     <tfoot><tr><td colSpan="2"><strong>Total Shared</strong></td><td className="right"><strong>{money(summary.paid)}</strong></td></tr></tfoot>
                   </table>
                 </div>
@@ -171,9 +176,7 @@ function SuperAdminView({ session, onLogout }) {
   const [showLogs, setShowLogs] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } }).then(res => res.json()).then(data => setAdmins(data));
-  }, [session.token]);
+  useEffect(() => { fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } }).then(res => res.json()).then(data => setAdmins(data)); }, [session.token]);
 
   const deleteSection = async (section) => {
     if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete the ENTIRE ${section} section?`)) return;
@@ -181,8 +184,7 @@ function SuperAdminView({ session, onLogout }) {
       const res = await fetch(`${API}/super-admin/sections/${section}`, { method: "DELETE", headers: { Authorization: `Bearer ${session.token}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessage(data.message);
-      setAdmins(admins.filter(a => a.section !== section));
+      setMessage(data.message); setAdmins(admins.filter(a => a.section !== section));
     } catch (err) { setMessage(err.message); }
   };
 
@@ -218,11 +220,7 @@ function SuperAdminView({ session, onLogout }) {
   const resetAdminPassword = async (adminId, name) => {
     if (!window.confirm(`Reset password for Admin ${name}?`)) return;
     try {
-      const res = await fetch(`${API}/super-admin/reset-admin-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
-        body: JSON.stringify({ adminId })
-      });
+      const res = await fetch(`${API}/super-admin/reset-admin-password`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ adminId }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setMessage(data.message);
@@ -233,7 +231,6 @@ function SuperAdminView({ session, onLogout }) {
 
   return (
     <div className="admin-layout">
-      
       <div className="mobile-header">
         <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>SUPER ADMIN</strong><span>MASTER CONTROL</span></div></div>
         <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
@@ -268,10 +265,7 @@ function SuperAdminView({ session, onLogout }) {
                 <tbody>
                   {admins.map((a, i) => (
                     <tr key={a.id}>
-                      <td>{i + 1}</td>
-                      <td>{a.name}</td>
-                      <td className="mono">{a.student_id}</td>
-                      <td><strong>{a.section}</strong></td>
+                      <td>{i + 1}</td><td>{a.name}</td><td className="mono">{a.student_id}</td><td><strong>{a.section}</strong></td>
                       <td className="right action-cell">
                         <button className="btn-inspect" onClick={() => inspectSection(a.section)}>Inspect</button>
                         <button className="btn-inspect" style={{ color: "#dc2626", borderColor: "#fecaca" }} onClick={() => resetAdminPassword(a.student_id, a.name)}>Reset Pass</button>
@@ -288,22 +282,14 @@ function SuperAdminView({ session, onLogout }) {
         {activeTab === "security" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="SYSTEM PROTECTION" title="Security Controls" description="Manage access and brute-force protections." />
-            <div className="stat-grid">
-              <div className="stat-card stat-success">
-                <p className="stat-label">Brute-Force Protection</p>
-                <p className="stat-value">Active</p>
-                <p className="stat-detail">Max 10 login attempts per 15 mins</p>
-              </div>
-            </div>
+            <div className="stat-grid"><div className="stat-card stat-success"><p className="stat-label">Brute-Force Protection</p><p className="stat-value">Active</p><p className="stat-detail">Max 10 login attempts per 15 mins</p></div></div>
             <div className="form-card" style={{ maxWidth: "600px", marginTop: "24px" }}>
               <div className="form-card-heading"><h3>Unblock IP Addresses</h3></div>
               <p style={{ marginBottom: "16px", fontSize: "14px", color: "var(--text-muted)" }}>If a legitimate user gets locked out, you can instantly clear the rate limits here.</p>
-              
               <div className="button-group-mobile">
                 <button onClick={handleUnblockAll} disabled={unblocking} style={{ background: "#f59e0b", borderColor: "#f59e0b", color: "white" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
                 <button onClick={fetchLogs} style={{ background: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white" }}>View Blocked Logs</button>
               </div>
-              
             </div>
           </div>
         )}
@@ -352,15 +338,15 @@ function AdminView({ session, onLogout }) {
   const [payments, setPayments] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [students, setStudents] = useState([]); 
+  const [approvals, setApprovals] = useState([]); // NEW
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(true);
   
-  // SEPARATED BUSY STATES
   const [busyStudent, setBusyStudent] = useState(false);
   const [busyPayment, setBusyPayment] = useState(false);
   const [busyExpense, setBusyExpense] = useState(false);
-  const [busyAction, setBusyAction] = useState(false); // For delete/reset actions
+  const [busyAction, setBusyAction] = useState(false);
   
   const [activeTab, setActiveTab] = useState("overview"); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -386,11 +372,7 @@ function AdminView({ session, onLogout }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setShowPasswordPrompt(false);
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setChangingPass(false);
-    }
+    } catch (err) { alert(err.message); } finally { setChangingPass(false); }
   }
 
   async function call(path, method = "GET", body) {
@@ -404,10 +386,10 @@ function AdminView({ session, onLogout }) {
   }
 
   async function loadAll() {
-    const [rep, pays, exps, studs] = await Promise.all([
-      call("/admin/report"), call("/admin/payments"), call("/admin/expenses"), call("/admin/students"), 
+    const [rep, pays, exps, studs, apps] = await Promise.all([
+      call("/admin/report"), call("/admin/payments"), call("/admin/expenses"), call("/admin/students"), call("/admin/approvals") 
     ]);
-    setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); 
+    setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps);
   }
 
   useEffect(() => {
@@ -418,7 +400,6 @@ function AdminView({ session, onLogout }) {
     return () => { active = false; };
   }, [session.token]);
 
-  // UPDATED SUBMIT FUNCTION
   async function submit(path, body, reset, setBusy, isBusy) {
     if (isBusy) return;
     setMessage(""); setBusy(true);
@@ -426,11 +407,7 @@ function AdminView({ session, onLogout }) {
       const data = await call(path, "POST", body);
       setMessage(data.message || "Success"); setMessageType("success");
       reset(); await loadAll();
-    } catch (err) { 
-      setMessage(err.message || "Error"); setMessageType("error"); 
-    } finally { 
-      setBusy(false); 
-    }
+    } catch (err) { setMessage(err.message || "Error"); setMessageType("error"); } finally { setBusy(false); }
   }
 
   async function removeItem(path, label) {
@@ -443,13 +420,12 @@ function AdminView({ session, onLogout }) {
     } catch (err) { setMessage(err.message || "Error"); setMessageType("error"); } finally { setBusyAction(false); }
   }
 
-  async function resetStudentPassword(studentId) {
+  async function handleApproval(id, action) {
     if (busyAction) return;
-    if (!window.confirm(`Reset password for student ${studentId}?`)) return;
     setBusyAction(true); setMessage("");
     try {
-      const data = await call("/admin/reset-password", "POST", { studentId });
-      setMessage(data.message); setMessageType("success");
+      const data = await call(`/admin/approvals/${id}/${action}`, "POST");
+      setMessage(data.message); setMessageType("success"); await loadAll();
     } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
   }
 
@@ -490,6 +466,12 @@ function AdminView({ session, onLogout }) {
         </div>
         <nav className="sidebar-nav">
           <button className={activeTab === "overview" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("overview")}>Overview</button>
+          
+          {/* NEW APPROVALS TAB */}
+          <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("approvals")}>
+            Approvals {approvals.length > 0 && <span style={{ background: "#ef4444", color: "white", borderRadius: "50%", padding: "2px 8px", fontSize: "12px", marginLeft: "auto" }}>{approvals.length}</span>}
+          </button>
+          
           <button className={activeTab === "students" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("students")}>Students</button>
           <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("deposits")}>Deposits</button>
           <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("expenses")}>Expenses</button>
@@ -518,6 +500,37 @@ function AdminView({ session, onLogout }) {
             <div className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
             <div className="activity-item"><div className="activity-info"><h4>Total Deposits Recorded</h4><p>All payments saved in the database</p></div><div className="activity-amount" style={{ color: "#059669" }}>{payments.length} Transactions</div></div>
             <div className="activity-item"><div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div><div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.length} Records</div></div>
+          </div>
+        )}
+
+        {/* NEW APPROVALS TAB CONTENT */}
+        {activeTab === "approvals" && (
+          <div className="tab-content fade-in">
+            <PageHeader eyebrow="VERIFICATION" title="Pending Approvals" description="Verify student deposit submissions." />
+            {approvals.length === 0 ? (
+              <div className="empty-state"><h3>No pending approvals</h3><p>All student deposits have been verified.</p></div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>#</th><th>Student Name</th><th>Student ID</th><th>Amount</th><th>Date & Time</th><th className="right">Action</th></tr></thead>
+                  <tbody>
+                    {approvals.map((a, i) => (
+                      <tr key={a.id}>
+                        <td>{i + 1}</td>
+                        <td>{a.name}</td>
+                        <td className="mono">{a.student_id}</td>
+                        <td className="amount-green"><strong>{money(a.amount)}</strong></td>
+                        <td>{new Date(a.created_at).toLocaleString()}</td>
+                        <td className="right action-cell">
+                          <button className="btn-inspect" onClick={() => handleApproval(a.id, "approve")} disabled={busyAction} style={{ color: "#059669", borderColor: "#a7f3d0" }}>Approve</button>
+                          <button className="btn-delete" onClick={() => handleApproval(a.id, "reject")} disabled={busyAction}>Reject</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

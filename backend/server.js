@@ -11,12 +11,10 @@ const { requireLogin, requireAdmin } = require("./auth");
 const app = express();
 
 // ==================== SECURITY MIDDLEWARE ====================
-
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// Custom handler to log when someone gets blocked
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 10, 
@@ -30,9 +28,7 @@ const authLimiter = rateLimit({
         "INSERT INTO security_logs (ip_address, event_type) VALUES (?, ?)",
         [ip, "Blocked (Brute Force)"]
       );
-    } catch (err) {
-      console.error("Failed to save security log:", err.message);
-    }
+    } catch (err) { console.error("Failed to save security log:", err.message); }
     res.status(options.statusCode).send(options.message);
   }
 });
@@ -40,7 +36,6 @@ const authLimiter = rateLimit({
 app.set('authLimiter', authLimiter);
 
 // ==================== ROUTES ====================
-
 app.get("/", (req, res) => {
   res.json({ message: "Class Fund API is running" });
 });
@@ -48,10 +43,7 @@ app.get("/", (req, res) => {
 app.post("/login", authLimiter, async (req, res) => {
   try {
     const { studentId, password } = req.body;
-
-    if (!studentId || !password) {
-      return res.status(400).json({ error: "ID and password are required" });
-    }
+    if (!studentId || !password) return res.status(400).json({ error: "ID and password are required" });
 
     const [rows] = await db.query(
       "SELECT id, student_id, name, password_hash, role, section, is_default_password FROM users WHERE student_id = ?",
@@ -60,10 +52,7 @@ app.post("/login", authLimiter, async (req, res) => {
 
     const user = rows[0];
     const ok = user && (await bcrypt.compare(password, user.password_hash));
-
-    if (!ok) {
-      return res.status(401).json({ error: "Invalid ID or password" });
-    }
+    if (!ok) return res.status(401).json({ error: "Invalid ID or password" });
 
     const token = jwt.sign(
       { id: user.id, role: user.role, section: user.section },
@@ -74,10 +63,7 @@ app.post("/login", authLimiter, async (req, res) => {
     res.json({
       token,
       user: { 
-        id: user.id, 
-        name: user.name, 
-        role: user.role, 
-        section: user.section,
+        id: user.id, name: user.name, role: user.role, section: user.section,
         isDefaultPassword: user.is_default_password === 1
       },
     });
@@ -90,28 +76,13 @@ app.post("/login", authLimiter, async (req, res) => {
 app.post("/register-admin", authLimiter, async (req, res) => {
   try {
     const { studentId, name, password, section } = req.body;
+    if (!studentId || !name || !password || !section) return res.status(400).json({ error: "All fields are required" });
 
-    if (!studentId || !name || !password || !section) {
-      return res.status(400).json({ error: "All fields are required" });
-    }
+    const [existingId] = await db.query("SELECT id FROM users WHERE student_id = ? AND role IN (1, 2)", [studentId]);
+    if (existingId.length > 0) return res.status(409).json({ error: "This Admin ID is already taken." });
 
-    const [existingId] = await db.query(
-      "SELECT id FROM users WHERE student_id = ? AND role IN (1, 2)",
-      [studentId]
-    );
-
-    if (existingId.length > 0) {
-      return res.status(409).json({ error: "This Admin ID is already taken. Please choose another." });
-    }
-
-    const [existingSection] = await db.query(
-      "SELECT id FROM users WHERE section = ? AND role = 1",
-      [section]
-    );
-
-    if (existingSection.length > 0) {
-      return res.status(409).json({ error: "An administrator is already assigned to this section." });
-    }
+    const [existingSection] = await db.query("SELECT id FROM users WHERE section = ? AND role = 1", [section]);
+    if (existingSection.length > 0) return res.status(409).json({ error: "An administrator is already assigned to this section." });
 
     const hash = await bcrypt.hash(password, 10);
     await db.query(
@@ -121,45 +92,93 @@ app.post("/register-admin", authLimiter, async (req, res) => {
 
     res.json({ message: "Admin account created successfully!" });
   } catch (err) {
-    if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ error: "This Admin ID is already taken. Please choose another." });
-    }
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "This Admin ID is already taken." });
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ============ STUDENT ROUTES ============
+// ============ STUDENT DEPOSIT REQUESTS ============
+app.post("/me/deposit", requireLogin, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const money = Number(amount);
+    if (!(money > 0)) return res.status(400).json({ error: "Valid amount required" });
+
+    await db.query("INSERT INTO deposit_requests (user_id, amount) VALUES (?, ?)", [req.user.id, money]);
+    res.json({ message: "Deposit request submitted! Waiting for admin approval." });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ============ ADMIN ROUTES ============
+app.get("/admin/approvals", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT d.id, d.amount, d.created_at, u.name, u.student_id 
+       FROM deposit_requests d
+       JOIN users u ON u.id = d.user_id
+       WHERE u.section = ? AND d.status = 'pending'
+       ORDER BY d.created_at ASC`,
+      [req.user.section]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/admin/approvals/:id/approve", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [reqs] = await db.query(
+      "SELECT d.id, d.amount, d.user_id FROM deposit_requests d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND u.section = ? AND d.status = 'pending'",
+      [req.params.id, req.user.section]
+    );
+    if (reqs.length === 0) return res.status(404).json({ error: "Request not found" });
+    const request = reqs[0];
+
+    await db.query("INSERT INTO payments (user_id, amount, paid_date, section) VALUES (?, ?, CURDATE(), ?)", [request.user_id, request.amount, req.user.section]);
+    await db.query("UPDATE deposit_requests SET status = 'approved' WHERE id = ?", [req.params.id]);
+    res.json({ message: "Deposit approved and added to records!" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/admin/approvals/:id/reject", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [result] = await db.query(
+      "UPDATE deposit_requests d JOIN users u ON u.id = d.user_id SET d.status = 'rejected' WHERE d.id = ? AND u.section = ? AND d.status = 'pending'",
+      [req.params.id, req.user.section]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Request not found" });
+    res.json({ message: "Deposit request rejected." });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, name, password } = req.body;
-    const section = req.user.section;
+    if (!studentId || !name || !password) return res.status(400).json({ error: "ID, name and password are required" });
 
-    if (!studentId || !name || !password) {
-      return res.status(400).json({ error: "ID, name and password are required" });
-    }
-
-    const [existingId] = await db.query(
-      "SELECT id FROM users WHERE student_id = ? AND role = 0",
-      [studentId]
-    );
-
-    if (existingId.length > 0) {
-      return res.status(409).json({ error: "This Student ID is already registered." });
-    }
+    const [existingId] = await db.query("SELECT id FROM users WHERE student_id = ? AND role = 0", [studentId]);
+    if (existingId.length > 0) return res.status(409).json({ error: "This Student ID is already registered." });
 
     const hash = await bcrypt.hash(password, 10);
     await db.query(
       "INSERT INTO users (student_id, name, password_hash, role, section) VALUES (?, ?, ?, 0, ?)",
-      [studentId, name, hash, section]
+      [studentId, name, hash, req.user.section]
     );
-
-    res.json({ message: "Student added to " + section });
+    res.json({ message: "Student added to " + req.user.section });
   } catch (err) {
-    if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ error: "This Student ID is already registered." });
-    }
+    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "This Student ID is already registered." });
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
   }
@@ -168,11 +187,8 @@ app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
 app.get("/admin/students", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, student_id, name, 
-              DATE_FORMAT(created_at, '%Y-%m-%d %h:%i %p') AS created_at 
-       FROM users 
-       WHERE role = 0 AND section = ? 
-       ORDER BY name ASC`,
+      `SELECT id, student_id, name, DATE_FORMAT(created_at, '%Y-%m-%d %h:%i %p') AS created_at 
+       FROM users WHERE role = 0 AND section = ? ORDER BY name ASC`,
       [req.user.section]
     );
     res.json(rows);
@@ -186,10 +202,7 @@ app.delete("/admin/students/:id", requireLogin, requireAdmin, async (req, res) =
   try {
     await db.query("DELETE FROM payments WHERE user_id = ?", [req.params.id]);
     const [result] = await db.query("DELETE FROM users WHERE id = ? AND role = 0 AND section = ?", [req.params.id, req.user.section]);
-    
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Student not found in your section" });
-    }
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Student not found" });
     res.json({ message: "Student deleted" });
   } catch (err) {
     console.error(err.message);
@@ -197,29 +210,17 @@ app.delete("/admin/students/:id", requireLogin, requireAdmin, async (req, res) =
   }
 });
 
-// ADMIN: Reset a student's password to default
 app.post("/admin/reset-password", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId } = req.body;
-    const section = req.user.section;
-
     const [rows] = await db.query(
       "SELECT id, name FROM users WHERE student_id = ? AND role = 0 AND section = ?",
-      [studentId, section]
+      [studentId, req.user.section]
     );
+    if (rows.length === 0) return res.status(404).json({ error: "Student not found" });
 
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Student not found in your section" });
-    }
-
-    const defaultPass = "123456";
-    const hash = await bcrypt.hash(defaultPass, 10);
-
-    await db.query(
-      "UPDATE users SET password_hash = ?, is_default_password = TRUE WHERE id = ?",
-      [hash, rows[0].id]
-    );
-
+    const hash = await bcrypt.hash("123456", 10);
+    await db.query("UPDATE users SET password_hash = ?, is_default_password = TRUE WHERE id = ?", [hash, rows[0].id]);
     res.json({ message: `Password for ${rows[0].name} reset to default (123456).` });
   } catch (err) {
     console.error(err.message);
@@ -227,32 +228,19 @@ app.post("/admin/reset-password", requireLogin, requireAdmin, async (req, res) =
   }
 });
 
-// ============ PAYMENT ROUTES ============
-
 app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, amount, date } = req.body;
     const money = Number(amount);
-    const section = req.user.section;
+    if (!studentId || !(money > 0)) return res.status(400).json({ error: "Student ID and amount required" });
 
-    if (!studentId || !(money > 0)) {
-      return res.status(400).json({ error: "Student ID and amount required" });
-    }
-
-    const [rows] = await db.query(
-      "SELECT id, name FROM users WHERE student_id = ? AND role = 0 AND section = ?",
-      [studentId, section]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Student not found in your section" });
-    }
+    const [rows] = await db.query("SELECT id, name FROM users WHERE student_id = ? AND role = 0 AND section = ?", [studentId, req.user.section]);
+    if (rows.length === 0) return res.status(404).json({ error: "Student not found" });
 
     await db.query(
       "INSERT INTO payments (user_id, amount, paid_date, section) VALUES (?, ?, COALESCE(?, CURDATE()), ?)",
-      [rows[0].id, money, date || null, section]
+      [rows[0].id, money, date || null, req.user.section]
     );
-
     res.json({ message: "Payment recorded for " + rows[0].name });
   } catch (err) {
     console.error(err.message);
@@ -263,12 +251,8 @@ app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
 app.get("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT p.id, p.amount, DATE_FORMAT(p.paid_date, '%Y-%m-%d %h:%i %p') AS date,
-              u.student_id, u.name
-       FROM payments p
-       JOIN users u ON u.id = p.user_id
-       WHERE p.section = ?
-       ORDER BY p.paid_date DESC, p.id DESC`,
+      `SELECT p.id, p.amount, DATE_FORMAT(p.paid_date, '%Y-%m-%d %h:%i %p') AS date, u.student_id, u.name 
+       FROM payments p JOIN users u ON u.id = p.user_id WHERE p.section = ? ORDER BY p.paid_date DESC, p.id DESC`,
       [req.user.section]
     );
     res.json(rows);
@@ -281,9 +265,7 @@ app.get("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
 app.delete("/admin/payments/:id", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [result] = await db.query("DELETE FROM payments WHERE id = ? AND section = ?", [req.params.id, req.user.section]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Payment not found in your section" });
-    }
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Payment not found" });
     res.json({ message: "Payment deleted" });
   } catch (err) {
     console.error(err.message);
@@ -291,23 +273,16 @@ app.delete("/admin/payments/:id", requireLogin, requireAdmin, async (req, res) =
   }
 });
 
-// ============ EXPENSE ROUTES ============
-
 app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { description, amount, date } = req.body;
     const money = Number(amount);
-    const section = req.user.section;
-
-    if (!description || !(money > 0)) {
-      return res.status(400).json({ error: "Description and amount required" });
-    }
+    if (!description || !(money > 0)) return res.status(400).json({ error: "Description and amount required" });
 
     await db.query(
       "INSERT INTO expenses (description, amount, expense_date, section) VALUES (?, ?, COALESCE(?, CURDATE()), ?)",
-      [description, money, date || null, section]
+      [description, money, date || null, req.user.section]
     );
-
     res.json({ message: "Expense logged: " + description });
   } catch (err) {
     console.error(err.message);
@@ -318,10 +293,7 @@ app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
 app.get("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, description, amount, DATE_FORMAT(expense_date, '%Y-%m-%d') AS date
-       FROM expenses
-       WHERE section = ?
-       ORDER BY expense_date DESC, id DESC`,
+      "SELECT id, description, amount, DATE_FORMAT(expense_date, '%Y-%m-%d') AS date FROM expenses WHERE section = ? ORDER BY expense_date DESC, id DESC",
       [req.user.section]
     );
     res.json(rows);
@@ -334,9 +306,7 @@ app.get("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
 app.delete("/admin/expenses/:id", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [result] = await db.query("DELETE FROM expenses WHERE id = ? AND section = ?", [req.params.id, req.user.section]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Expense not found in your section" });
-    }
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Expense not found" });
     res.json({ message: "Expense deleted" });
   } catch (err) {
     console.error(err.message);
@@ -344,43 +314,29 @@ app.delete("/admin/expenses/:id", requireLogin, requireAdmin, async (req, res) =
   }
 });
 
-// ============ SUMMARY & REPORT ============
-
 app.get("/me/summary", requireLogin, async (req, res) => {
   try {
     const [payments] = await db.query(
       "SELECT id, amount, DATE_FORMAT(paid_date, '%Y-%m-%d') AS date FROM payments WHERE user_id = ? ORDER BY paid_date DESC, id DESC",
       [req.user.id]
     );
-
     const paid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-
     const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [req.user.section]);
     const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [req.user.section]);
-    const totalClassFund = Number(allC.total) - Number(allE.total);
-
-    res.json({ paid, totalClassFund, payments });
+    res.json({ paid, totalClassFund: Number(allC.total) - Number(allE.total), payments });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// CHANGE PASSWORD (For both Admin and Student)
 app.post("/me/change-password", requireLogin, async (req, res) => {
   try {
     const { newPassword } = req.body;
-
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: "Password must be at least 6 characters" });
-    }
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
     const hash = await bcrypt.hash(newPassword, 10);
-    await db.query(
-      "UPDATE users SET password_hash = ?, is_default_password = FALSE WHERE id = ?",
-      [hash, req.user.id]
-    );
-
+    await db.query("UPDATE users SET password_hash = ?, is_default_password = FALSE WHERE id = ?", [hash, req.user.id]);
     res.json({ message: "Password updated successfully!" });
   } catch (err) {
     console.error(err.message);
@@ -393,31 +349,16 @@ app.get("/admin/report", requireLogin, requireAdmin, async (req, res) => {
     const now = new Date();
     const thisMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
     const month = req.query.month || thisMonth;
-    const section = req.user.section;
-
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ error: "Month must look like 2026-10" });
-    }
+    if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "Month must look like 2026-10" });
 
     const start = month + "-01";
-
-    const [[c]] = await db.query(
-      "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND paid_date >= ? AND paid_date < DATE_ADD(?, INTERVAL 1 MONTH)",
-      [section, start, start]
-    );
-    const [[e]] = await db.query(
-      "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND expense_date >= ? AND expense_date < DATE_ADD(?, INTERVAL 1 MONTH)",
-      [section, start, start]
-    );
-    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [section]);
-    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [section]);
+    const [[c]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND paid_date >= ? AND paid_date < DATE_ADD(?, INTERVAL 1 MONTH)", [req.user.section, start, start]);
+    const [[e]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND expense_date >= ? AND expense_date < DATE_ADD(?, INTERVAL 1 MONTH)", [req.user.section, start, start]);
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [req.user.section]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [req.user.section]);
 
     res.json({
-      month,
-      collected: Number(c.total),
-      expenses: Number(e.total),
-      monthNet: Number(c.total) - Number(e.total),
-      cashOnHand: Number(allC.total) - Number(allE.total),
+      month, collected: Number(c.total), expenses: Number(e.total), monthNet: Number(c.total) - Number(e.total), cashOnHand: Number(allC.total) - Number(allE.total),
     });
   } catch (err) {
     console.error(err.message);
@@ -426,117 +367,68 @@ app.get("/admin/report", requireLogin, requireAdmin, async (req, res) => {
 });
 
 // ============ SUPER ADMIN ROUTES ============
-
 app.get("/super-admin/admins", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
   try {
-    const [rows] = await db.query(
-      "SELECT id, student_id, name, section FROM users WHERE role = 1 ORDER BY section ASC"
-    );
+    const [rows] = await db.query("SELECT id, student_id, name, section FROM users WHERE role = 1 ORDER BY section ASC");
     res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 app.get("/super-admin/sections/:sectionName", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
   const section = req.params.sectionName;
-
   try {
-    const [students] = await db.query(
-      "SELECT id, student_id, name FROM users WHERE role = 0 AND section = ? ORDER BY name ASC",
-      [section]
-    );
-
+    const [students] = await db.query("SELECT id, student_id, name FROM users WHERE role = 0 AND section = ? ORDER BY name ASC", [section]);
     const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [section]);
     const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [section]);
-    const cashOnHand = Number(allC.total) - Number(allE.total);
-
-    res.json({ students, cashOnHand });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Server error" });
-  }
+    res.json({ students, cashOnHand: Number(allC.total) - Number(allE.total) });
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 app.delete("/super-admin/sections/:sectionName", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
-  
   const section = req.params.sectionName;
   try {
     await db.query("DELETE FROM payments WHERE section = ?", [section]);
     await db.query("DELETE FROM expenses WHERE section = ?", [section]);
     await db.query("DELETE FROM users WHERE section = ?", [section]); 
-    
     res.json({ message: `Successfully deleted the entire ${section} section.` });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 app.post("/super-admin/reset-limits", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
-  
   try {
     const limiter = req.app.get('authLimiter');
     if (limiter) {
-      limiter.resetKey("*"); 
+      limiter.resetKey(req.ip); 
+      if (limiter.store && limiter.store.resetAll) limiter.store.resetAll();
+      else limiter.store.hits = {};
     }
     res.json({ message: "Successfully unblocked all IP addresses." });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// SUPER ADMIN: Get security logs
 app.get("/super-admin/logs", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
-  
   try {
-    const [logs] = await db.query(
-      "SELECT id, ip_address, event_type, created_at FROM security_logs ORDER BY created_at DESC LIMIT 50"
-    );
+    const [logs] = await db.query("SELECT id, ip_address, event_type, created_at FROM security_logs ORDER BY created_at DESC LIMIT 50");
     res.json(logs);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// SUPER ADMIN: Reset an Admin's password
 app.post("/super-admin/reset-admin-password", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
-  
   try {
     const { adminId } = req.body;
-
-    // Check if the admin exists
-    const [rows] = await db.query(
-      "SELECT id, name FROM users WHERE student_id = ? AND role = 1",
-      [adminId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Admin not found" });
-    }
-
-    // Set password to default "123456" and flag it
-    const defaultPass = "123456";
-    const hash = await bcrypt.hash(defaultPass, 10);
-
-    await db.query(
-      "UPDATE users SET password_hash = ?, is_default_password = TRUE WHERE id = ?",
-      [hash, rows[0].id]
-    );
-
+    const [rows] = await db.query("SELECT id, name FROM users WHERE student_id = ? AND role = 1", [adminId]);
+    if (rows.length === 0) return res.status(404).json({ error: "Admin not found" });
+    
+    const hash = await bcrypt.hash("123456", 10);
+    await db.query("UPDATE users SET password_hash = ?, is_default_password = TRUE WHERE id = ?", [hash, rows[0].id]);
     res.json({ message: `Password for Admin ${rows[0].name} reset to default (123456).` });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 const PORT = process.env.PORT || 3001;
