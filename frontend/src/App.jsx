@@ -338,7 +338,8 @@ function AdminView({ session, onLogout }) {
   const [payments, setPayments] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [students, setStudents] = useState([]); 
-  const [approvals, setApprovals] = useState([]); // NEW
+  const [approvals, setApprovals] = useState([]); 
+  const [ledger, setLedger] = useState([]); // NEW LEDGER STATE
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(true);
@@ -386,10 +387,10 @@ function AdminView({ session, onLogout }) {
   }
 
   async function loadAll() {
-    const [rep, pays, exps, studs, apps] = await Promise.all([
-      call("/admin/report"), call("/admin/payments"), call("/admin/expenses"), call("/admin/students"), call("/admin/approvals") 
+    const [rep, pays, exps, studs, apps, ledg] = await Promise.all([
+      call("/admin/report"), call("/admin/payments"), call("/admin/expenses"), call("/admin/students"), call("/admin/approvals"), call("/admin/ledger") // ADDED LEDGER
     ]);
-    setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps);
+    setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps); setLedger(ledg);
   }
 
   useEffect(() => {
@@ -467,12 +468,15 @@ function AdminView({ session, onLogout }) {
         <nav className="sidebar-nav">
           <button className={activeTab === "overview" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("overview")}>Overview</button>
           
-          {/* NEW APPROVALS TAB */}
           <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("approvals")}>
             Approvals {approvals.length > 0 && <span style={{ background: "#ef4444", color: "white", borderRadius: "50%", padding: "2px 8px", fontSize: "12px", marginLeft: "auto" }}>{approvals.length}</span>}
           </button>
           
           <button className={activeTab === "students" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("students")}>Students</button>
+          
+          {/* NEW LEDGER TAB */}
+          <button className={activeTab === "ledger" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("ledger")}>General Ledger</button>
+          
           <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("deposits")}>Deposits</button>
           <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("expenses")}>Expenses</button>
           <button className={activeTab === "manage" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("manage")}>Manage Fund</button>
@@ -503,7 +507,6 @@ function AdminView({ session, onLogout }) {
           </div>
         )}
 
-        {/* NEW APPROVALS TAB CONTENT */}
         {activeTab === "approvals" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="VERIFICATION" title="Pending Approvals" description="Verify student deposit submissions." />
@@ -524,6 +527,51 @@ function AdminView({ session, onLogout }) {
                         <td className="right action-cell">
                           <button className="btn-inspect" onClick={() => handleApproval(a.id, "approve")} disabled={busyAction} style={{ color: "#059669", borderColor: "#a7f3d0" }}>Approve</button>
                           <button className="btn-delete" onClick={() => handleApproval(a.id, "reject")} disabled={busyAction}>Reject</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* NEW LEDGER TAB CONTENT */}
+        {activeTab === "ledger" && (
+          <div className="tab-content fade-in">
+            <PageHeader eyebrow="FINANCIAL RECORD" title="General Ledger" description="A complete history of all money in and money out." />
+            {ledger.length === 0 ? (
+              <div className="empty-state"><h3>No transactions yet</h3></div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Description</th>
+                      <th className="right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledger.map((item, i) => (
+                      <tr key={`${item.type}-${item.id}`}>
+                        <td>{i + 1}</td>
+                        <td>{new Date(item.date).toLocaleDateString()}</td>
+                        <td>
+                          <span style={{ 
+                            padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600",
+                            background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2",
+                            color: item.type === "Deposit" ? "#065f46" : "#991b1b"
+                          }}>
+                            {item.type}
+                          </span>
+                        </td>
+                        <td>{item.description}</td>
+                        <td className={`right ${item.type === "Deposit" ? "amount-green" : "amount-red"}`}>
+                          <strong>{item.type === "Deposit" ? "+" : "-"} {money(item.amount)}</strong>
                         </td>
                       </tr>
                     ))}
