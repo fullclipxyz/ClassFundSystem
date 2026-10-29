@@ -14,16 +14,26 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// Custom handler to log block and tag with section
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
-  max: 10, 
+  max: 5, // 5 failed attempts before blocking
   message: { error: "Too many login attempts. Please try again after 15 minutes." },
   standardHeaders: true, 
   legacyHeaders: false, 
   handler: async (req, res, next, options) => {
     try {
       const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-      await db.query("INSERT INTO security_logs (ip_address, event_type) VALUES (?, ?)", [ip, "Blocked (Brute Force)"]);
+      const studentId = req.body.studentId || "Unknown";
+      
+      // Find the student to get their section
+      const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
+      const section = users.length > 0 ? users[0].section : null;
+
+      await db.query(
+        "INSERT INTO security_logs (ip_address, event_type, section) VALUES (?, ?, ?)",
+        [ip, `Blocked Login (ID: ${studentId})`, section]
+      );
     } catch (err) { console.error("Failed to save security log:", err.message); }
     res.status(options.statusCode).send(options.message);
   }
@@ -113,7 +123,40 @@ app.post("/admin/approvals/:id/reject", requireLogin, requireAdmin, async (req, 
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ============ NEW GENERAL LEDGER ROUTE ============
+// ============ ADMIN SECURITY ROUTES ============
+app.get("/admin/security-logs", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT id, ip_address, event_type, created_at FROM security_logs WHERE section = ? ORDER BY created_at DESC LIMIT 50",
+      [req.user.section]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
+});
+
+app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    // Find user section to verify it belongs to this admin
+    const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
+    if (users.length === 0 || users[0].section !== req.user.section) {
+      return res.status(403).json({ error: "Unauthorized to unblock this student." });
+    }
+
+    // Clear the rate limit memory
+    const limiter = req.app.get('authLimiter');
+    if (limiter) {
+      if (limiter.store && limiter.store.resetAll) limiter.store.resetAll();
+      else limiter.store.hits = {}; 
+    }
+
+    // Clear the logs for this student
+    await db.query("DELETE FROM security_logs WHERE section = ? AND event_type LIKE ?", [req.user.section, `%${studentId}%`]);
+
+    res.json({ message: `Successfully unblocked student ${studentId}.` });
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
+});
+
 app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -123,8 +166,7 @@ app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
         UNION ALL
         SELECT e.id, 'Expense' as type, e.description, e.amount, e.expense_date as date
         FROM expenses e WHERE e.section = ?
-      ) AS ledger
-      ORDER BY date DESC, id DESC`,
+      ) AS ledger ORDER BY date DESC, id DESC`,
       [req.user.section, req.user.section]
     );
     res.json(rows);

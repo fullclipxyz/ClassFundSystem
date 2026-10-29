@@ -282,7 +282,7 @@ function SuperAdminView({ session, onLogout }) {
         {activeTab === "security" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="SYSTEM PROTECTION" title="Security Controls" description="Manage access and brute-force protections." />
-            <div className="stat-grid"><div className="stat-card stat-success"><p className="stat-label">Brute-Force Protection</p><p className="stat-value">Active</p><p className="stat-detail">Max 10 login attempts per 15 mins</p></div></div>
+            <div className="stat-grid"><div className="stat-card stat-success"><p className="stat-label">Brute-Force Protection</p><p className="stat-value">Active</p><p className="stat-detail">Max 5 login attempts per 15 mins</p></div></div>
             <div className="form-card" style={{ maxWidth: "600px", marginTop: "24px" }}>
               <div className="form-card-heading"><h3>Unblock IP Addresses</h3></div>
               <p style={{ marginBottom: "16px", fontSize: "14px", color: "var(--text-muted)" }}>If a legitimate user gets locked out, you can instantly clear the rate limits here.</p>
@@ -339,7 +339,9 @@ function AdminView({ session, onLogout }) {
   const [expenses, setExpenses] = useState([]);
   const [students, setStudents] = useState([]); 
   const [approvals, setApprovals] = useState([]); 
-  const [ledger, setLedger] = useState([]); // NEW LEDGER STATE
+  const [ledger, setLedger] = useState([]);
+  const [secLogs, setSecLogs] = useState([]);
+  
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(true);
@@ -387,10 +389,10 @@ function AdminView({ session, onLogout }) {
   }
 
   async function loadAll() {
-    const [rep, pays, exps, studs, apps, ledg] = await Promise.all([
-      call("/admin/report"), call("/admin/payments"), call("/admin/expenses"), call("/admin/students"), call("/admin/approvals"), call("/admin/ledger") // ADDED LEDGER
+    const [rep, pays, exps, studs, apps, ledg, secs] = await Promise.all([
+      call("/admin/report"), call("/admin/payments"), call("/admin/expenses"), call("/admin/students"), call("/admin/approvals"), call("/admin/ledger"), call("/admin/security-logs")
     ]);
-    setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps); setLedger(ledg);
+    setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps); setLedger(ledg); setSecLogs(secs);
   }
 
   useEffect(() => {
@@ -426,6 +428,16 @@ function AdminView({ session, onLogout }) {
     setBusyAction(true); setMessage("");
     try {
       const data = await call(`/admin/approvals/${id}/${action}`, "POST");
+      setMessage(data.message); setMessageType("success"); await loadAll();
+    } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
+  }
+
+  async function handleUnblock(studentId) {
+    if (busyAction) return;
+    if (!window.confirm(`Unblock student ${studentId}?`)) return;
+    setBusyAction(true); setMessage("");
+    try {
+      const data = await call("/admin/unblock-student", "POST", { studentId });
       setMessage(data.message); setMessageType("success"); await loadAll();
     } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
   }
@@ -473,9 +485,9 @@ function AdminView({ session, onLogout }) {
           </button>
           
           <button className={activeTab === "students" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("students")}>Students</button>
-          
-          {/* NEW LEDGER TAB */}
           <button className={activeTab === "ledger" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("ledger")}>General Ledger</button>
+          
+          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("security")}>Security Logs</button>
           
           <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("deposits")}>Deposits</button>
           <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("expenses")}>Expenses</button>
@@ -504,6 +516,41 @@ function AdminView({ session, onLogout }) {
             <div className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
             <div className="activity-item"><div className="activity-info"><h4>Total Deposits Recorded</h4><p>All payments saved in the database</p></div><div className="activity-amount" style={{ color: "#059669" }}>{payments.length} Transactions</div></div>
             <div className="activity-item"><div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div><div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.length} Records</div></div>
+          </div>
+        )}
+
+        {activeTab === "security" && (
+          <div className="tab-content fade-in">
+            <PageHeader eyebrow="PROTECTION" title="Security Logs" description="Manage students from your section who are locked out." />
+            {secLogs.length === 0 ? (
+              <div className="empty-state"><h3>No lockouts</h3><p>All students in your section are safe.</p></div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>#</th><th>Blocked ID / Info</th><th>IP Address</th><th>Date & Time</th><th className="right">Action</th></tr></thead>
+                  <tbody>
+                    {secLogs.map((log, i) => {
+                      const match = log.event_type.match(/ID:\s*([^)]+)/);
+                      const blockedId = match ? match[1].trim() : "";
+
+                      return (
+                        <tr key={log.id}>
+                          <td>{i + 1}</td>
+                          <td><span style={{ color: "#dc2626", fontWeight: "600" }}>{log.event_type}</span></td>
+                          <td className="mono">{log.ip_address}</td>
+                          <td>{new Date(log.created_at).toLocaleString()}</td>
+                          <td className="right action-cell">
+                            {blockedId && (
+                              <button className="btn-inspect" onClick={() => handleUnblock(blockedId)} disabled={busyAction}>Unblock Student</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -537,7 +584,6 @@ function AdminView({ session, onLogout }) {
           </div>
         )}
 
-        {/* NEW LEDGER TAB CONTENT */}
         {activeTab === "ledger" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="FINANCIAL RECORD" title="General Ledger" description="A complete history of all money in and money out." />
@@ -547,13 +593,7 @@ function AdminView({ session, onLogout }) {
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Date</th>
-                      <th>Type</th>
-                      <th>Description</th>
-                      <th className="right">Amount</th>
-                    </tr>
+                    <tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr>
                   </thead>
                   <tbody>
                     {ledger.map((item, i) => (
@@ -561,11 +601,7 @@ function AdminView({ session, onLogout }) {
                         <td>{i + 1}</td>
                         <td>{new Date(item.date).toLocaleDateString()}</td>
                         <td>
-                          <span style={{ 
-                            padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600",
-                            background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2",
-                            color: item.type === "Deposit" ? "#065f46" : "#991b1b"
-                          }}>
+                          <span style={{ padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2", color: item.type === "Deposit" ? "#065f46" : "#991b1b" }}>
                             {item.type}
                           </span>
                         </td>
