@@ -17,7 +17,7 @@ app.use(express.json());
 // ==================== RATE LIMITER (STUDENT ONLY) ====================
 const studentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
-  max: 5, // 5 failed attempts
+  max: 5, 
   message: { error: "Too many login attempts. Please try again after 15 minutes." },
   standardHeaders: true, 
   legacyHeaders: false, 
@@ -29,11 +29,16 @@ const studentLimiter = rateLimit({
       const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
       const section = users.length > 0 ? users[0].section : null;
 
+      // Use INSERT IGNORE or a try-catch to prevent crashes if DB is slow
       await db.query(
         "INSERT INTO security_logs (ip_address, event_type, section) VALUES (?, ?, ?)",
         [ip, `Blocked Login (ID: ${studentId})`, section]
       );
-    } catch (err) { console.error("Failed to save security log:", err.message); }
+    } catch (err) { 
+      console.error("Failed to save security log:", err.message); 
+    }
+    
+    // Send the block message safely
     res.status(options.statusCode).send(options.message);
   }
 });
@@ -55,8 +60,19 @@ app.post("/login", async (req, res, next) => {
 
     // ONLY apply rate limit if they are a student (role === 0)
     if (user.role === 0) {
-      studentLimiter(req, res, () => {}); // Apply the limiter
-      if (res.headersSent) return; // If blocked, stop here
+      // We manually check if they are over the limit
+      const limitCheck = await studentLimiter.getKey ? null : null; // Just a dummy check
+      
+      // Apply the limiter properly
+      let limited = false;
+      await new Promise((resolve) => {
+        studentLimiter(req, res, () => { limited = true; resolve(); });
+      });
+
+      if (limited) {
+        // If the limiter sent a response (like the 429 error), stop here
+        if (res.headersSent) return;
+      }
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
@@ -64,7 +80,10 @@ app.post("/login", async (req, res, next) => {
 
     const token = jwt.sign({ id: user.id, role: user.role, section: user.section }, process.env.JWT_SECRET, { expiresIn: "8h" });
     res.json({ token, user: { id: user.id, name: user.name, role: user.role, section: user.section, isDefaultPassword: user.is_default_password === 1 } });
-  } catch (err) { res.status(500).json({ error: "Server error" }); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: "Server error" }); 
+  }
 });
 
 // ==================== REGISTER ADMIN ====================
@@ -155,15 +174,12 @@ app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) 
       return res.status(403).json({ error: "Unauthorized to unblock this student." });
     }
 
-    // THE FIX: Use the official resetKey method instead of hacking the store
     const limiter = req.app.get('studentLimiter');
     if (limiter) {
-      // Get the IP of the request (which matches the blocked IP)
       const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
       limiter.resetKey(ip); 
     }
 
-    // Delete the logs for this student
     await db.query("DELETE FROM security_logs WHERE section = ? AND event_type LIKE ?", [req.user.section, `%${studentId}%`]);
 
     res.json({ message: `Successfully unblocked student ${studentId}.` });
