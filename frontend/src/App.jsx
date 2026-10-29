@@ -626,8 +626,18 @@ function AdminView({ session, onLogout }) {
               </div>
             )}
             <div className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
-            <div className="activity-item"><div className="activity-info"><h4>Total Deposits Recorded</h4><p>All payments saved in the database</p></div><div className="activity-amount" style={{ color: "#059669" }}>{payments.length} Transactions</div></div>
-            <div className="activity-item"><div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div><div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.length} Records</div></div>
+            
+            {/* CLICKABLE RECENT ACTIVITY */}
+            <div className="activity-item" onClick={() => handleTabClick("deposits")} style={{ cursor: "pointer", transition: "background 0.2s" }} onMouseOver={(e) => e.currentTarget.style.background = "#f1f5f9"} onMouseOut={(e) => e.currentTarget.style.background = "#f8fafc"}>
+              <div className="activity-info"><h4>Total Deposits Recorded</h4><p>All payments saved in the database</p></div>
+              <div className="activity-amount" style={{ color: "#059669" }}>{payments.length} Transactions</div>
+            </div>
+
+            <div className="activity-item" onClick={() => handleTabClick("expenses")} style={{ cursor: "pointer", transition: "background 0.2s" }} onMouseOver={(e) => e.currentTarget.style.background = "#f1f5f9"} onMouseOut={(e) => e.currentTarget.style.background = "#f8fafc"}>
+              <div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div>
+              <div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.length} Records</div>
+            </div>
+            
           </div>
         )}
 
