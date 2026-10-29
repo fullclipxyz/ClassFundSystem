@@ -527,7 +527,6 @@ function AdminView({ session, onLogout }) {
           
           <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("deposits")}>Deposits</button>
           <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("expenses")}>Expenses</button>
-          <button className={activeTab === "manage" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("manage")}>Manage Fund</button>
         </nav>
         <div className="sidebar-footer">
           <div className="admin-info"><p className="admin-name">{session.user.name}</p><p className="admin-role">{session.user.section} Admin</p></div>
@@ -654,9 +653,21 @@ function AdminView({ session, onLogout }) {
           </div>
         )}
 
+        {/* MOVED ADD STUDENT FORM HERE */}
         {activeTab === "students" && (
           <div className="tab-content fade-in">
-            <PageHeader eyebrow="USER DIRECTORY" title={`${session.user.section} Students`} description="View all students." />
+            <PageHeader eyebrow="USER DIRECTORY" title={`${session.user.section} Students`} description="View and add students." />
+            
+            <div className="form-card" style={{ marginBottom: "24px" }}>
+              <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
+              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }} style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: "150px" }}><label>Student ID</label><input placeholder="Min 6 chars" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required /></div>
+                <div style={{ flex: 1, minWidth: "150px" }}><label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required /></div>
+                <div style={{ flex: 1, minWidth: "150px" }}><label>Password</label><input type="password" placeholder="Min 6 chars" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required /></div>
+                <button type="submit" disabled={busyStudent} style={{ marginTop: "22px", padding: "12px 24px" }}>{busyStudent ? "Wait..." : "Add student"}</button>
+              </form>
+            </div>
+
             {students.length === 0 ? (
               <div className="empty-state"><h3>No students found</h3></div>
             ) : (
@@ -683,9 +694,33 @@ function AdminView({ session, onLogout }) {
           </div>
         )}
 
+        {/* MOVED RECORD PAYMENT FORM HERE */}
         {activeTab === "deposits" && (
           <div className="tab-content fade-in">
-            <PageHeader eyebrow="TRANSACTIONS" title="All Deposits" description="Student contributions." />
+            <PageHeader eyebrow="TRANSACTIONS" title="All Deposits" description="Record payments and view student contributions." />
+
+            <div className="form-card" style={{ marginBottom: "24px" }}>
+              <div className="form-card-heading"><span className="form-icon">02</span><div><h3>Record payment</h3><p>Manually record a student's contribution.</p></div></div>
+              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }} style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: "200px" }} className="custom-dropdown-container">
+                  <label>Student ID</label>
+                  <input placeholder="Enter or select student ID" value={payment.studentId} onChange={(e) => { setPayment({ ...payment, studentId: e.target.value.replace(/[^0-9]/g, '') }); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} required />
+                  {showDropdown && students.filter(s => s.student_id.includes(payment.studentId)).length > 0 && (
+                    <ul className="custom-dropdown-list">
+                      {students.filter(s => s.student_id.includes(payment.studentId)).map(s => (
+                        <li key={s.id} onClick={() => { setPayment({ ...payment, studentId: s.student_id }); setShowDropdown(false); }} className={payment.studentId === s.student_id ? "active" : ""}>
+                          <span className="student-name">{s.name}</span>
+                          <span className="student-id">{s.student_id}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: "150px" }}><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required /></div>
+                <button type="submit" disabled={busyPayment} style={{ marginTop: "22px", padding: "12px 24px" }}>{busyPayment ? "Wait..." : "Record payment"}</button>
+              </form>
+            </div>
+
             {payments.length === 0 ? <div className="empty-state"><h3>No payments</h3></div> : (
               <div className="table-wrap">
                 <table className="data-table">
@@ -707,9 +742,20 @@ function AdminView({ session, onLogout }) {
           </div>
         )}
 
+        {/* MOVED LOG EXPENSE FORM HERE */}
         {activeTab === "expenses" && (
           <div className="tab-content fade-in">
-            <PageHeader eyebrow="TRANSACTIONS" title="All Expenses" description="Track spending." />
+            <PageHeader eyebrow="TRANSACTIONS" title="All Expenses" description="Log spending and track expenses." />
+
+            <div className="form-card" style={{ marginBottom: "24px" }}>
+              <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
+              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }} style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "flex-start" }}>
+                <div style={{ flex: 2, minWidth: "200px" }}><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required /></div>
+                <div style={{ flex: 1, minWidth: "150px" }}><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required /></div>
+                <button type="submit" disabled={busyExpense} style={{ marginTop: "22px", padding: "12px 24px" }}>{busyExpense ? "Wait..." : "Save expense"}</button>
+              </form>
+            </div>
+
             {expenses.length === 0 ? <div className="empty-state"><h3>No expenses</h3></div> : (
               <div className="table-wrap">
                 <table className="data-table">
@@ -727,50 +773,6 @@ function AdminView({ session, onLogout }) {
                 </table>
               </div>
             )}
-          </div>
-        )}
-
-        {activeTab === "manage" && (
-          <div className="tab-content fade-in">
-            <PageHeader eyebrow="ADMIN ACTIONS" title="Manage Class Fund" description="Add students, log payments and expenses." />
-            <div className="admin-grid">
-              
-              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }}>
-                <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
-                <label>Student ID</label><input placeholder="Min 6 characters" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required />
-                <label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required />
-                <label>Password</label><input type="password" placeholder="Min 6 characters" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required />
-                <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
-              </form>
-
-              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }}>
-                <div className="form-card-heading"><span className="form-icon">02</span><div><h3>Record payment</h3><p>Record a student's contribution.</p></div></div>
-                <label>Student ID</label>
-                <div className="custom-dropdown-container">
-                  <input placeholder="Enter or select student ID" value={payment.studentId} onChange={(e) => { setPayment({ ...payment, studentId: e.target.value.replace(/[^0-9]/g, '') }); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} required />
-                  {showDropdown && students.filter(s => s.student_id.includes(payment.studentId)).length > 0 && (
-                    <ul className="custom-dropdown-list">
-                      {students.filter(s => s.student_id.includes(payment.studentId)).map(s => (
-                        <li key={s.id} onClick={() => { setPayment({ ...payment, studentId: s.student_id }); setShowDropdown(false); }} className={payment.studentId === s.student_id ? "active" : ""}>
-                          <span className="student-name">{s.name}</span>
-                          <span className="student-id">{s.student_id}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required />
-                <button type="submit" disabled={busyPayment}>{busyPayment ? "Wait..." : "Record payment"}</button>
-              </form>
-
-              <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
-                <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
-                <label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required />
-                <label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required />
-                <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
-              </form>
-
-            </div>
           </div>
         )}
         <footer className="page-footer">Class Fund Portal · {session.user.section} Admin</footer>
