@@ -103,7 +103,7 @@ function StudentView({ session, onLogout }) {
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the admin. Please create a new secure password." />
           <form className="login-form" onSubmit={handleChangePassword}>
             <label>New Password</label>
-            <input type="password" placeholder="Enter new password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+            <input type="password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
             <button className="login-button" type="submit" disabled={changingPass}>{changingPass ? "Saving..." : "Save Password"}</button>
           </form>
         </main>
@@ -491,7 +491,7 @@ function AdminView({ session, onLogout }) {
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the Super Admin. Please create a new secure password." />
           <form className="login-form" onSubmit={handleChangePassword}>
             <label>New Password</label>
-            <input type="password" placeholder="Enter new password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+            <input type="password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
             <button className="login-button" type="submit" disabled={changingPass}>{changingPass ? "Saving..." : "Save Password"}</button>
           </form>
         </main>
@@ -739,7 +739,7 @@ function AdminView({ session, onLogout }) {
                 <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
                 <label>Student ID</label><input placeholder="Min 6 characters" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required />
                 <label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required />
-                <label>Password</label><input type="password" placeholder="Create a password" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} required />
+                <label>Password</label><input type="password" placeholder="Min 6 characters" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required />
                 <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
               </form>
 
@@ -872,7 +872,7 @@ function App() {
         <form className="login-form" onSubmit={handleSubmit}>
           <label>ID</label>
           <input 
-            placeholder={isRegistering ? "Enter admin ID (min 6 chars)" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
+            placeholder={isRegistering ? "Min 6 characters" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
             value={studentId} 
             onChange={e => setStudentId(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} 
             minLength={isRegistering ? 6 : undefined}
@@ -888,7 +888,7 @@ function App() {
           )}
           
           <label>Password</label>
-          <input type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} required />
+          <input type="password" placeholder="Min 6 characters" value={password} onChange={e => setPassword(e.target.value)} minLength={isRegistering ? 6 : undefined} required />
           
           <button className="login-button" type="submit" disabled={loading}>{loading ? "Wait..." : isRegistering ? "Register" : "Sign in"}</button>
         </form>

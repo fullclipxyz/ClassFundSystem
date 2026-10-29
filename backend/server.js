@@ -53,7 +53,6 @@ app.post("/login", async (req, res, next) => {
     
     if (!user) return res.status(401).json({ error: "Invalid ID or password" });
 
-    // Role check with generic error message for security
     if (loginRole === "student" && user.role !== 0) {
       return res.status(401).json({ error: "Invalid ID or password" });
     }
@@ -85,9 +84,8 @@ app.post("/register-admin", async (req, res) => {
   try {
     const { studentId, name, password, section } = req.body;
     if (!studentId || !name || !password || !section) return res.status(400).json({ error: "All fields are required" });
-    
-    // 6 character minimum for Admin ID
     if (studentId.length < 6) return res.status(400).json({ error: "Admin ID must be at least 6 characters." });
+    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
 
     const [existingId] = await db.query("SELECT id FROM users WHERE student_id = ? AND role IN (1, 2)", [studentId]);
     if (existingId.length > 0) return res.status(409).json({ error: "This Admin ID is already taken." });
@@ -104,12 +102,18 @@ app.post("/register-admin", async (req, res) => {
   }
 });
 
-// ============ STUDENT DEPOSIT REQUESTS ============
+// ============ STUDENT DEPOSIT REQUESTS (FIXED SPAM) ============
 app.post("/me/deposit", requireLogin, async (req, res) => {
   try {
     const { amount } = req.body;
     const money = Number(amount);
     if (!(money > 0)) return res.status(400).json({ error: "Valid positive amount required" });
+
+    // THE FIX: Check for pending deposit
+    const [existing] = await db.query("SELECT id FROM deposit_requests WHERE user_id = ? AND status = 'pending'", [req.user.id]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: "You already have a pending deposit. Please wait for the Admin to approve it." });
+    }
 
     await db.query("INSERT INTO deposit_requests (user_id, amount) VALUES (?, ?)", [req.user.id, money]);
     res.json({ message: "Deposit request submitted! Waiting for admin approval." });
@@ -206,9 +210,8 @@ app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, name, password } = req.body;
     if (!studentId || !name || !password) return res.status(400).json({ error: "ID, name and password are required" });
-    
-    // 6 character minimum for Student ID
     if (studentId.length < 6) return res.status(400).json({ error: "Student ID must be at least 6 characters." });
+    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
 
     const [existingId] = await db.query("SELECT id FROM users WHERE student_id = ? AND role = 0", [studentId]);
     if (existingId.length > 0) return res.status(409).json({ error: "This Student ID is already registered." });

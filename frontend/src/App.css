@@ -44,7 +44,7 @@ input {
   display: block; width: 100%; padding: 12px; margin-bottom: 16px; 
   border: 1px solid var(--border-color); border-radius: 6px; 
   background: white; color: var(--text-main); 
-  font-size: 16px; /* Prevents auto-zoom on iOS */
+  font-size: 16px;
   font-family: inherit; transition: border-color 0.2s ease, box-shadow 0.2s ease; 
 }
 input:focus { outline: none; border-color: var(--brand-accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
@@ -212,17 +212,47 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
 .activity-info p { margin: 0; font-size: 12px; color: var(--text-muted); }
 .activity-amount { font-weight: 700; font-size: 16px; }
 
-/* ==================== CUSTOM DROPDOWN ==================== */
+/* ==================== CUSTOM DROPDOWN (FIXED SCROLL) ==================== */
 .custom-dropdown-container { position: relative; width: 100%; margin-bottom: 16px; }
 .custom-dropdown-container input { margin-bottom: 0; }
-.custom-dropdown-list { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #000; border-radius: 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); max-height: 150px; overflow-y: auto; z-index: 100; margin: 2px 0 0 0; padding: 0; list-style: none; }
-.custom-dropdown-list::-webkit-scrollbar { width: 16px; background: #f0f0f0; border-left: 1px solid #000; }
-.custom-dropdown-list::-webkit-scrollbar-thumb { background: #c0c0c0; border: 1px solid #000; }
-.custom-dropdown-list::-webkit-scrollbar-button { background: #f0f0f0; border: 1px solid #000; display: block; height: 16px; }
-.custom-dropdown-list li { padding: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: white; color: #000; font-size: 14px; }
-.custom-dropdown-list li:hover, .custom-dropdown-list li.active { background: #000080; color: white; }
+.custom-dropdown-list { 
+  position: absolute; 
+  top: 100%; 
+  left: 0; 
+  right: 0; 
+  background: white; 
+  border: 1px solid var(--border-color); 
+  border-radius: 6px; 
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+  max-height: 200px; /* THE FIX */
+  overflow-y: auto; /* THE FIX */
+  z-index: 999; /* THE FIX */
+  margin: 4px 0 0 0; 
+  padding: 0; 
+  list-style: none; 
+}
+
+.custom-dropdown-list::-webkit-scrollbar { width: 8px; }
+.custom-dropdown-list::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+.custom-dropdown-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.custom-dropdown-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.custom-dropdown-list li { 
+  padding: 10px 12px; 
+  cursor: pointer; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  background: white; 
+  color: var(--text-main); 
+  font-size: 14px; 
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.custom-dropdown-list li:last-child { border-bottom: none; }
+.custom-dropdown-list li:hover, .custom-dropdown-list li.active { background: #eff6ff; color: var(--brand-accent); }
 .custom-dropdown-list li .student-name { font-weight: 600; }
-.custom-dropdown-list li .student-id { font-family: monospace; font-size: 13px; }
+.custom-dropdown-list li .student-id { font-family: monospace; font-size: 13px; color: var(--text-muted); }
 
 /* ==================== WIDE LAYOUT FOR STUDENT DASHBOARD ==================== */
 .student-layout { padding: 40px 20px; width: 100%; }
@@ -253,7 +283,6 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
   .stat-grid { grid-template-columns: 1fr; }
   .form-card { padding: 20px 16px; }
   
-  /* STACK THE NEW BUTTONS */
   .button-group-mobile {
     flex-direction: column;
   }
@@ -261,14 +290,10 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
 
 /* ==================== THE MOBILE CARD TABLE FIX ==================== */
 @media (max-width: 768px) {
-  /* Hide the table headers */
   .data-table thead { display: none; }
-  
-  /* Make the table act like a list */
   .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
-  .data-table { min-width: 100%; } /* Remove the 600px width constraint */
+  .data-table { min-width: 100%; }
   
-  /* Style each row as a card */
   .data-table tr {
     margin-bottom: 16px;
     border: 1px solid var(--border-color);
@@ -279,7 +304,6 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
     overflow: hidden;
   }
   
-  /* Style each cell */
   .data-table td { 
     padding: 8px 4px; 
     text-align: right; 
@@ -292,7 +316,6 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
   
   .data-table td:last-child { border-bottom: none; }
   
-  /* Create the labels for the cards using data-label attribute */
   .data-table td::before {
     content: attr(data-label);
     font-weight: 600;
@@ -303,7 +326,6 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
     text-align: left;
   }
 
-  /* Force the action buttons to full width in the card */
   .data-table td.action-cell {
     display: flex;
     flex-direction: row;
@@ -313,9 +335,6 @@ label { display: block; margin-bottom: 6px; color: var(--text-main); font-size: 
     margin-top: 8px;
   }
   
-  /* Make the buttons look good inside the cards */
   .action-cell button { flex: 1; margin: 0 4px; }
-  
-  /* Hide the table footer (it looks weird as a card) */
   .data-table tfoot { display: none; }
 }
