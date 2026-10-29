@@ -20,7 +20,7 @@ function Brand() {
 function PageHeader({ eyebrow, title, description, action }) {
   return (
     <div className="page-header">
-      <div>
+      <div className="page-header-content">
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className="page-description">{description}</p>}
