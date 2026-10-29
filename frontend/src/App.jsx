@@ -737,7 +737,7 @@ function AdminView({ session, onLogout }) {
               
               <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }}>
                 <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
-                <label>Student ID</label><input placeholder="e.g. 2024001" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} required />
+                <label>Student ID</label><input placeholder="Min 6 characters" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required />
                 <label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required />
                 <label>Password</label><input type="password" placeholder="Create a password" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} required />
                 <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
@@ -812,7 +812,6 @@ function App() {
       const res = await fetch(`${API}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       
-      // THE FIX: Check if there is an error OR if the response is not OK
       if (!res.ok || data.error) { 
         setError(data.error || "Invalid ID or password"); 
         setLoading(false);
@@ -873,9 +872,10 @@ function App() {
         <form className="login-form" onSubmit={handleSubmit}>
           <label>ID</label>
           <input 
-            placeholder={isRegistering ? "Enter admin ID" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
+            placeholder={isRegistering ? "Enter admin ID (min 6 chars)" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
             value={studentId} 
             onChange={e => setStudentId(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} 
+            minLength={isRegistering ? 6 : undefined}
             required 
           />
           

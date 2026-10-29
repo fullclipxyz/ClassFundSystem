@@ -18,7 +18,7 @@ app.use(express.json());
 const studentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 5, 
-  message: { error: "Invalid ID or password" }, // Generic message for hackers
+  message: { error: "Invalid ID or password" },
   standardHeaders: true, 
   legacyHeaders: false, 
   handler: async (req, res, next, options) => {
@@ -51,10 +51,9 @@ app.post("/login", async (req, res, next) => {
     const [rows] = await db.query("SELECT id, student_id, name, password_hash, role, section, is_default_password FROM users WHERE student_id = ?", [studentId]);
     const user = rows[0];
     
-    // If user doesn't exist, send generic error
     if (!user) return res.status(401).json({ error: "Invalid ID or password" });
 
-    // ROLE CHECK: Ensure they are logging in from the correct tab, but send generic error
+    // Role check with generic error message for security
     if (loginRole === "student" && user.role !== 0) {
       return res.status(401).json({ error: "Invalid ID or password" });
     }
@@ -62,7 +61,6 @@ app.post("/login", async (req, res, next) => {
       return res.status(401).json({ error: "Invalid ID or password" });
     }
 
-    // ONLY apply rate limit if they are a student (role === 0)
     if (user.role === 0) {
       let limited = false;
       await new Promise((resolve) => {
@@ -87,6 +85,9 @@ app.post("/register-admin", async (req, res) => {
   try {
     const { studentId, name, password, section } = req.body;
     if (!studentId || !name || !password || !section) return res.status(400).json({ error: "All fields are required" });
+    
+    // 6 character minimum for Admin ID
+    if (studentId.length < 6) return res.status(400).json({ error: "Admin ID must be at least 6 characters." });
 
     const [existingId] = await db.query("SELECT id FROM users WHERE student_id = ? AND role IN (1, 2)", [studentId]);
     if (existingId.length > 0) return res.status(409).json({ error: "This Admin ID is already taken." });
@@ -205,6 +206,10 @@ app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, name, password } = req.body;
     if (!studentId || !name || !password) return res.status(400).json({ error: "ID, name and password are required" });
+    
+    // 6 character minimum for Student ID
+    if (studentId.length < 6) return res.status(400).json({ error: "Student ID must be at least 6 characters." });
+
     const [existingId] = await db.query("SELECT id FROM users WHERE student_id = ? AND role = 0", [studentId]);
     if (existingId.length > 0) return res.status(409).json({ error: "This Student ID is already registered." });
 
