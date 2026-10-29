@@ -1,38 +1,29 @@
 # STI Class Fund System
 
-A full-stack web application designed to help students and administrators manage class funds efficiently. Built with React, Node.js, and a cloud-hosted MySQL database. 
+A full-stack web application designed to help students and administrators manage class funds efficiently. Built with React, Node.js, and a cloud-hosted MySQL database.
 
-## 📌 Project Overview
-Managing class funds manually can lead to lost records and confusion. This system solves that by providing a centralized, secure platform where students can view their payment history, and admins can manage their specific sections without seeing data from other classes.
+🚀 **Live Demo:** [https://class-fund-system-one.vercel.app](https://class-fund-system-one.vercel.app) 
+*(Note: The backend is hosted on Render's free tier, so the first login might take 30-50 seconds while the server wakes up.)*
 
-## ✨ Key Features
+📌 **Project Overview**
+Managing class funds manually can lead to lost records and confusion. This system solves that by providing a centralized, secure platform where students can view their payment history, submit deposits, and admins can manage their specific sections.
 
-### For Students
-- **Flexible Login:** Log in using either your Student ID or Full Name.
-- **Personal Dashboard:** View your total shared contributions and a clear table of your past payments.
-- **Section Fund Tracking:** See the total cash on hand specifically for your section.
+✨ **Key Features**
+* **For Students:** Submit deposit requests, view personal contribution history, and see the total class fund.
+* **For Admins:** Section-based access (only see your own class), Approve/Reject student deposits, General Ledger (all money in/out), Security Logs (unblock students), and manage students/expenses.
+* **For Super Admin:** Global control over all sections, reset admin passwords, and system-wide security controls.
 
-### For Admins
-- **Section-Based Access:** Admins register for a specific section (e.g., BSIT 1A). They only see and manage students within their own section.
-- **Financial Overview:** A dashboard showing total collected, total expenses, monthly net, and current cash on hand.
-- **Manage Students:** Add new students, or delete them (which safely removes their payment history).
-- **Transaction Logs:** Record student payments and log class expenses. Mistakes can be easily deleted.
-- **Admin Registration:** New admins can securely register directly from the login page.
+🛠️ **Tech Stack**
+* **Frontend:** React.js, Vite, standard CSS (Fully mobile-optimized with stacked card views)
+* **Backend:** Node.js, Express.js
+* **Database:** MySQL (Hosted on Aiven Cloud)
+* **Security:** JWT for sessions, Bcrypt for passwords, Express-Rate-Limit for brute-force protection
+* **Deployment:** Vercel (Frontend) & Render (Backend)
 
-## 🛠️ Tech Stack
-- **Frontend:** React.js, Vite, standard CSS
-- **Backend:** Node.js, Express.js
-- **Database:** MySQL (Hosted on Aiven Cloud)
-- **Security:** JWT (JSON Web Tokens) for sessions, Bcrypt for password hashing
-- **Deployment:** Netlify (Frontend) & Render (Backend)
-
-## 💻 How to Run Locally
+💻 **How to Run Locally**
 1. Clone this repository.
 2. Setup your database credentials in the `backend/.env` file.
-3. Open two terminals. 
+3. Open two terminals.
 4. **Backend:** `cd backend` -> `npm install` -> `node server.js`
 5. **Frontend:** `cd frontend` -> `npm install` -> `npm run dev`
 6. Open `http://localhost:5173` in your browser.
-
----
-*Created as a full-stack web development project.*
