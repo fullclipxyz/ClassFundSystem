@@ -181,8 +181,8 @@ function StudentView({ session, onLogout }) {
                   <div><h3>Submit a Deposit</h3><p>Send money to the class fund. Admin will verify it.</p></div>
                 </div>
                 {depositMessage && <Notice type={depositMessage.includes("submitted") ? "success" : "error"}>{depositMessage}</Notice>}
-                <form onSubmit={handleDeposit} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" }}>
-                  <div style={{ flex: 1, minWidth: "200px" }}>
+                <form onSubmit={handleDeposit}>
+                  <div>
                     <label>Amount (PHP)</label>
                     <input type="number" min="1" step="0.01" placeholder="0.00" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} required style={{ marginBottom: 0 }} />
                   </div>
@@ -425,7 +425,6 @@ function AdminView({ session, onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Pagination States for all tables
   const itemsPerPage = 10;
   const [studentPage, setStudentPage] = useState(1);
   const [paymentPage, setPaymentPage] = useState(1);
@@ -537,19 +536,15 @@ function AdminView({ session, onLogout }) {
   const totalPayments = payments.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
 
-  // Pagination Calculation for Students
   const studentTotalPages = Math.ceil(students.length / itemsPerPage) || 1;
   const currentStudents = students.slice((studentPage - 1) * itemsPerPage, studentPage * itemsPerPage);
 
-  // Pagination Calculation for Payments
   const paymentTotalPages = Math.ceil(payments.length / itemsPerPage) || 1;
   const currentPayments = payments.slice((paymentPage - 1) * itemsPerPage, paymentPage * itemsPerPage);
 
-  // Pagination Calculation for Expenses
   const expenseTotalPages = Math.ceil(expenses.length / itemsPerPage) || 1;
   const currentExpenses = expenses.slice((expensePage - 1) * itemsPerPage, expensePage * itemsPerPage);
 
-  // Ledger Filter & Pagination
   const filteredLedger = ledger.filter(item => {
     if (!ledgerSearch) return true;
     const searchLower = ledgerSearch.toLowerCase();
@@ -748,10 +743,10 @@ function AdminView({ session, onLogout }) {
             
             <div className="form-card" style={{ marginBottom: "24px" }}>
               <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
-              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }} style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
-                <div style={{ flex: 1, minWidth: "150px" }}><label>Student ID</label><input placeholder="Min 6 chars" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required style={{ marginBottom: 0 }} /></div>
-                <div style={{ flex: 1, minWidth: "150px" }}><label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required style={{ marginBottom: 0 }} /></div>
-                <div style={{ flex: 1, minWidth: "150px" }}><label>Password</label><input type="password" placeholder="Min 6 chars" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required style={{ marginBottom: 0 }} /></div>
+              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }}>
+                <div><label>Student ID</label><input placeholder="Min 6 chars" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required style={{ marginBottom: 0 }} /></div>
+                <div><label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required style={{ marginBottom: 0 }} /></div>
+                <div><label>Password</label><input type="password" placeholder="Min 6 chars" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required style={{ marginBottom: 0 }} /></div>
                 <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
               </form>
             </div>
@@ -791,8 +786,8 @@ function AdminView({ session, onLogout }) {
 
             <div className="form-card" style={{ marginBottom: "24px" }}>
               <div className="form-card-heading"><span className="form-icon">02</span><div><h3>Record payment</h3><p>Manually record a student's contribution.</p></div></div>
-              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }} style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
-                <div style={{ flex: 1, minWidth: "200px" }} className="custom-dropdown-container">
+              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }}>
+                <div className="custom-dropdown-container">
                   <label>Student ID</label>
                   <input placeholder="Enter or select student ID" value={payment.studentId} onChange={(e) => { setPayment({ ...payment, studentId: e.target.value.replace(/[^0-9]/g, '') }); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} required style={{ marginBottom: 0 }} />
                   {showDropdown && students.filter(s => s.student_id.includes(payment.studentId)).length > 0 && (
@@ -806,7 +801,7 @@ function AdminView({ session, onLogout }) {
                     </ul>
                   )}
                 </div>
-                <div style={{ flex: 1, minWidth: "150px" }}><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+                <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
                 <button type="submit" disabled={busyPayment}>{busyPayment ? "Wait..." : "Record payment"}</button>
               </form>
             </div>
@@ -841,9 +836,9 @@ function AdminView({ session, onLogout }) {
 
             <div className="form-card" style={{ marginBottom: "24px" }}>
               <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
-              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }} style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
-                <div style={{ flex: 2, minWidth: "200px" }}><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                <div style={{ flex: 1, minWidth: "150px" }}><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
+                <div><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+                <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
                 <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
               </form>
             </div>
