@@ -786,7 +786,7 @@ function AdminView({ session, onLogout }) {
 
             <div className="form-card" style={{ marginBottom: "24px" }}>
               <div className="form-card-heading"><span className="form-icon">02</span><div><h3>Record payment</h3><p>Manually record a student's contribution.</p></div></div>
-              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }}>
+              <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }}>
                 <div className="custom-dropdown-container">
                   <label>Student ID</label>
                   <input placeholder="Enter or select student ID" value={payment.studentId} onChange={(e) => { setPayment({ ...payment, studentId: e.target.value.replace(/[^0-9]/g, '') }); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} required style={{ marginBottom: 0 }} />
@@ -836,7 +836,7 @@ function AdminView({ session, onLogout }) {
 
             <div className="form-card" style={{ marginBottom: "24px" }}>
               <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
-              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
+              <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
                 <div><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
                 <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
                 <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
