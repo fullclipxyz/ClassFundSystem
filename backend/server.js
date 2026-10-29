@@ -63,7 +63,8 @@ app.post("/login", async (req, res, next) => {
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: "Invalid ID or password" });
 
-    const token = jwt.sign({ id: user.id, role: user.role, section: user.section }, process.env.JWT_SECRET, { expiresIn: "8h" });
+    // Shortened to 2 hours for better security
+    const token = jwt.sign({ id: user.id, role: user.role, section: user.section }, process.env.JWT_SECRET, { expiresIn: "2h" });
     res.json({ token, user: { id: user.id, name: user.name, role: user.role, section: user.section, isDefaultPassword: user.is_default_password === 1 } });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
@@ -216,7 +217,7 @@ app.post("/admin/reset-password", requireLogin, requireAdmin, async (req, res) =
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ============ PAYMENTS (HIDES SOFT DELETED) ============
+// ============ PAYMENTS ============
 app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, amount, date } = req.body;
@@ -244,7 +245,7 @@ app.delete("/admin/payments/:id", requireLogin, requireAdmin, async (req, res) =
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ============ EXPENSES (HIDES SOFT DELETED) ============
+// ============ EXPENSES ============
 app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { description, amount, date } = req.body;
@@ -255,7 +256,6 @@ app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// UPDATED: Fetch Active vs Archived Expenses
 app.get("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   try {
     const showArchived = req.query.archived === "true";
