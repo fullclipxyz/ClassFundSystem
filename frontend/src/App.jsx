@@ -494,7 +494,7 @@ function AdminView({ session, onLogout }) {
   });
 
   // Pagination Logic
-  const totalPages = Math.ceil(filteredLedger.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredLedger.length / itemsPerPage) || 1;
   const indexOfLastItem = ledgerPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentLedgerItems = filteredLedger.slice(indexOfFirstItem, indexOfLastItem);
@@ -688,29 +688,40 @@ function AdminView({ session, onLogout }) {
                 </div>
 
                 {/* PAGINATION CONTROLS */}
-                {totalPages > 1 && (
-                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", marginTop: "24px" }}>
-                    <button 
-                      onClick={() => setLedgerPage(prev => Math.max(prev - 1, 1))} 
-                      disabled={ledgerPage === 1}
-                      style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)" }}
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", marginTop: "24px", flexWrap: "wrap" }}>
+                  <button 
+                    onClick={() => setLedgerPage(prev => Math.max(prev - 1, 1))} 
+                    disabled={ledgerPage === 1}
+                    style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === 1 ? 0.5 : 1 }}
+                  >
+                    &lt; Back
+                  </button>
+                  
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNumber => (
+                    <button
+                      key={pageNumber}
+                      onClick={() => setLedgerPage(pageNumber)}
+                      style={{ 
+                        padding: "8px 14px", 
+                        background: ledgerPage === pageNumber ? "#0f172a" : "white", 
+                        color: ledgerPage === pageNumber ? "white" : "var(--text-main)", 
+                        border: "1px solid var(--border-color)", 
+                        borderRadius: "6px",
+                        fontWeight: "600"
+                      }}
                     >
-                      Prev
+                      {pageNumber}
                     </button>
-                    
-                    <span style={{ fontWeight: "600", color: "var(--text-muted)" }}>
-                      Page {ledgerPage} of {totalPages}
-                    </span>
-                    
-                    <button 
-                      onClick={() => setLedgerPage(prev => Math.min(prev + 1, totalPages))} 
-                      disabled={ledgerPage === totalPages}
-                      style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)" }}
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
+                  ))}
+
+                  <button 
+                    onClick={() => setLedgerPage(prev => Math.min(prev + 1, totalPages))} 
+                    disabled={ledgerPage === totalPages}
+                    style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === totalPages ? 0.5 : 1 }}
+                  >
+                    Next &gt;
+                  </button>
+                </div>
               </>
             )}
           </div>
