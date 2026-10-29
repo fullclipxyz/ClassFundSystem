@@ -136,7 +136,7 @@ function StudentView({ session, onLogout }) {
                 <form onSubmit={handleDeposit} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ flex: 1, minWidth: "200px" }}>
                     <label>Amount (PHP)</label>
-                    <input type="number" placeholder="0.00" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} required style={{ marginBottom: 0 }} />
+                    <input type="number" min="1" step="0.01" placeholder="0.00" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} required style={{ marginBottom: 0 }} />
                   </div>
                   <button type="submit" disabled={depositLoading} style={{ background: "#059669", borderColor: "#059669", padding: "12px 24px" }}>{depositLoading ? "Submitting..." : "Submit Deposit"}</button>
                 </form>
@@ -759,14 +759,14 @@ function AdminView({ session, onLogout }) {
                     </ul>
                   )}
                 </div>
-                <label>Amount (PHP)</label><input type="number" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required />
+                <label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required />
                 <button type="submit" disabled={busyPayment}>{busyPayment ? "Wait..." : "Record payment"}</button>
               </form>
 
               <form className="form-card" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
                 <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
                 <label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required />
-                <label>Amount (PHP)</label><input type="number" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required />
+                <label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required />
                 <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
               </form>
 
@@ -806,7 +806,7 @@ function App() {
     setLoading(true);
     
     const endpoint = isRegistering ? "/register-admin" : "/login";
-    const body = isRegistering ? { studentId, name, password, section } : { studentId, password };
+    const body = isRegistering ? { studentId, name, password, section } : { studentId, password, loginRole };
     
     try {
       const res = await fetch(`${API}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

@@ -29,16 +29,11 @@ const studentLimiter = rateLimit({
       const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
       const section = users.length > 0 ? users[0].section : null;
 
-      // Use INSERT IGNORE or a try-catch to prevent crashes if DB is slow
       await db.query(
         "INSERT INTO security_logs (ip_address, event_type, section) VALUES (?, ?, ?)",
         [ip, `Blocked Login (ID: ${studentId})`, section]
       );
-    } catch (err) { 
-      console.error("Failed to save security log:", err.message); 
-    }
-    
-    // Send the block message safely
+    } catch (err) { console.error("Failed to save security log:", err.message); }
     res.status(options.statusCode).send(options.message);
   }
 });
@@ -47,10 +42,10 @@ app.set('studentLimiter', studentLimiter);
 
 app.get("/", (req, res) => { res.json({ message: "Class Fund API is running" }); });
 
-// ==================== LOGIN ====================
+// ==================== LOGIN (ROLE CHECK ADDED) ====================
 app.post("/login", async (req, res, next) => {
   try {
-    const { studentId, password } = req.body;
+    const { studentId, password, loginRole } = req.body;
     if (!studentId || !password) return res.status(400).json({ error: "ID and password are required" });
 
     const [rows] = await db.query("SELECT id, student_id, name, password_hash, role, section, is_default_password FROM users WHERE student_id = ?", [studentId]);
@@ -58,21 +53,21 @@ app.post("/login", async (req, res, next) => {
     
     if (!user) return res.status(401).json({ error: "Invalid ID or password" });
 
+    // ROLE CHECK: Ensure they are logging in from the correct tab
+    if (loginRole === "student" && user.role !== 0) {
+      return res.status(403).json({ error: "This is an Admin account. Please use the Administrator tab." });
+    }
+    if (loginRole === "admin" && user.role === 0) {
+      return res.status(403).json({ error: "This is a Student account. Please use the Student tab." });
+    }
+
     // ONLY apply rate limit if they are a student (role === 0)
     if (user.role === 0) {
-      // We manually check if they are over the limit
-      const limitCheck = await studentLimiter.getKey ? null : null; // Just a dummy check
-      
-      // Apply the limiter properly
       let limited = false;
       await new Promise((resolve) => {
         studentLimiter(req, res, () => { limited = true; resolve(); });
       });
-
-      if (limited) {
-        // If the limiter sent a response (like the 429 error), stop here
-        if (res.headersSent) return;
-      }
+      if (limited && res.headersSent) return;
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
@@ -112,7 +107,7 @@ app.post("/me/deposit", requireLogin, async (req, res) => {
   try {
     const { amount } = req.body;
     const money = Number(amount);
-    if (!(money > 0)) return res.status(400).json({ error: "Valid amount required" });
+    if (!(money > 0)) return res.status(400).json({ error: "Valid positive amount required" });
 
     await db.query("INSERT INTO deposit_requests (user_id, amount) VALUES (?, ?)", [req.user.id, money]);
     res.json({ message: "Deposit request submitted! Waiting for admin approval." });
@@ -189,7 +184,7 @@ app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) 
   }
 });
 
-// ============ OTHER ADMIN ROUTES ============
+// ============ LEDGER (FIXED TO INCLUDE DELETED EXPENSES) ============
 app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -250,7 +245,7 @@ app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, amount, date } = req.body;
     const money = Number(amount);
-    if (!studentId || !(money > 0)) return res.status(400).json({ error: "Student ID and amount required" });
+    if (!studentId || !(money > 0)) return res.status(400).json({ error: "Student ID and valid positive amount required" });
     const [rows] = await db.query("SELECT id, name FROM users WHERE student_id = ? AND role = 0 AND section = ?", [studentId, req.user.section]);
     if (rows.length === 0) return res.status(404).json({ error: "Student not found" });
     await db.query("INSERT INTO payments (user_id, amount, paid_date, section) VALUES (?, ?, COALESCE(?, CURDATE()), ?)", [rows[0].id, money, date || null, req.user.section]);
@@ -277,7 +272,7 @@ app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { description, amount, date } = req.body;
     const money = Number(amount);
-    if (!description || !(money > 0)) return res.status(400).json({ error: "Description and amount required" });
+    if (!description || !(money > 0)) return res.status(400).json({ error: "Description and valid positive amount required" });
     await db.query("INSERT INTO expenses (description, amount, expense_date, section) VALUES (?, ?, COALESCE(?, CURDATE()), ?)", [description, money, date || null, req.user.section]);
     res.json({ message: "Expense logged: " + description });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
