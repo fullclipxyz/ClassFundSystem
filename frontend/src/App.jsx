@@ -651,7 +651,7 @@ function AdminView({ session, onLogout }) {
               <label>Filter by Student (Name or ID)</label>
               <input 
                 type="text" 
-                placeholder="e.g. '333' or 'eee'" 
+                placeholder="Search by Student ID or Name..." 
                 value={ledgerSearch} 
                 onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} 
                 style={{ marginBottom: 0 }}
