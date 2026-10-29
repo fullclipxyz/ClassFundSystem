@@ -442,6 +442,20 @@ function AdminView({ session, onLogout }) {
     } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
   }
 
+  async function resetStudentPassword(studentId) {
+    if (busyAction) return;
+    if (!window.confirm(`Reset password for student ${studentId}?`)) return;
+    setBusyAction(true); setMessage("");
+    try {
+      const data = await call("/admin/reset-password", "POST", { studentId });
+      setMessage(data.message); setMessageType("success");
+    } catch (err) { 
+      setMessage(err.message); setMessageType("error"); 
+    } finally { 
+      setBusyAction(false); 
+    }
+  }
+
   const totalPayments = payments.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
 
