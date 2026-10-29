@@ -14,10 +14,10 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// Custom handler to log block and tag with section
-const authLimiter = rateLimit({
+// ==================== RATE LIMITER (STUDENT ONLY) ====================
+const studentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
-  max: 5, // 5 failed attempts before blocking
+  max: 5, // 5 failed attempts
   message: { error: "Too many login attempts. Please try again after 15 minutes." },
   standardHeaders: true, 
   legacyHeaders: false, 
@@ -26,7 +26,6 @@ const authLimiter = rateLimit({
       const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
       const studentId = req.body.studentId || "Unknown";
       
-      // Find the student to get their section
       const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
       const section = users.length > 0 ? users[0].section : null;
 
@@ -39,18 +38,28 @@ const authLimiter = rateLimit({
   }
 });
 
-app.set('authLimiter', authLimiter);
+app.set('studentLimiter', studentLimiter);
 
 app.get("/", (req, res) => { res.json({ message: "Class Fund API is running" }); });
 
-app.post("/login", authLimiter, async (req, res) => {
+// ==================== LOGIN ====================
+app.post("/login", async (req, res, next) => {
   try {
     const { studentId, password } = req.body;
     if (!studentId || !password) return res.status(400).json({ error: "ID and password are required" });
 
     const [rows] = await db.query("SELECT id, student_id, name, password_hash, role, section, is_default_password FROM users WHERE student_id = ?", [studentId]);
     const user = rows[0];
-    const ok = user && (await bcrypt.compare(password, user.password_hash));
+    
+    if (!user) return res.status(401).json({ error: "Invalid ID or password" });
+
+    // ONLY apply rate limit if they are a student (role === 0)
+    if (user.role === 0) {
+      studentLimiter(req, res, () => {}); // Apply the limiter
+      if (res.headersSent) return; // If blocked, stop here
+    }
+
+    const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: "Invalid ID or password" });
 
     const token = jwt.sign({ id: user.id, role: user.role, section: user.section }, process.env.JWT_SECRET, { expiresIn: "8h" });
@@ -58,7 +67,8 @@ app.post("/login", authLimiter, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-app.post("/register-admin", authLimiter, async (req, res) => {
+// ==================== REGISTER ADMIN ====================
+app.post("/register-admin", async (req, res) => {
   try {
     const { studentId, name, password, section } = req.body;
     if (!studentId || !name || !password || !section) return res.status(400).json({ error: "All fields are required" });
@@ -131,32 +141,36 @@ app.get("/admin/security-logs", requireLogin, requireAdmin, async (req, res) => 
       [req.user.section]
     );
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: "Server error" }); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: "Server error" }); 
+  }
 });
 
 app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId } = req.body;
-    // Find user section to verify it belongs to this admin
     const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
     if (users.length === 0 || users[0].section !== req.user.section) {
       return res.status(403).json({ error: "Unauthorized to unblock this student." });
     }
 
-    // Clear the rate limit memory
-    const limiter = req.app.get('authLimiter');
+    const limiter = req.app.get('studentLimiter');
     if (limiter) {
       if (limiter.store && limiter.store.resetAll) limiter.store.resetAll();
       else limiter.store.hits = {}; 
     }
 
-    // Clear the logs for this student
     await db.query("DELETE FROM security_logs WHERE section = ? AND event_type LIKE ?", [req.user.section, `%${studentId}%`]);
 
     res.json({ message: `Successfully unblocked student ${studentId}.` });
-  } catch (err) { res.status(500).json({ error: "Server error" }); }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).json({ error: "Server error" }); 
+  }
 });
 
+// ============ OTHER ADMIN ROUTES ============
 app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -329,7 +343,7 @@ app.delete("/super-admin/sections/:sectionName", requireLogin, async (req, res) 
 app.post("/super-admin/reset-limits", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
   try {
-    const limiter = req.app.get('authLimiter');
+    const limiter = req.app.get('studentLimiter');
     if (limiter) { limiter.resetKey(req.ip); if (limiter.store && limiter.store.resetAll) limiter.store.resetAll(); else limiter.store.hits = {}; }
     res.json({ message: "Successfully unblocked all IP addresses." });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
