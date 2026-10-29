@@ -662,7 +662,7 @@ function AdminView({ session, onLogout }) {
               <div className="empty-state"><h3>No transactions found</h3></div>
             ) : (
               <>
-                <div className="table-wrap">
+                <div className="table-wrap ledger-card">
                   <table className="data-table">
                     <thead>
                       <tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr>
@@ -688,36 +688,46 @@ function AdminView({ session, onLogout }) {
                 </div>
 
                 {/* PAGINATION CONTROLS */}
-                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", marginTop: "24px", flexWrap: "wrap" }}>
+                <div className="pagination-container">
                   <button 
                     onClick={() => setLedgerPage(prev => Math.max(prev - 1, 1))} 
                     disabled={ledgerPage === 1}
-                    style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === 1 ? 0.5 : 1 }}
+                    className="pagination-btn"
+                    style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === 1 ? 0.5 : 1 }}
                   >
                     &lt; Back
                   </button>
                   
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNumber => (
-                    <button
-                      key={pageNumber}
-                      onClick={() => setLedgerPage(pageNumber)}
-                      style={{ 
-                        padding: "8px 14px", 
-                        background: ledgerPage === pageNumber ? "#0f172a" : "white", 
-                        color: ledgerPage === pageNumber ? "white" : "var(--text-main)", 
-                        border: "1px solid var(--border-color)", 
-                        borderRadius: "6px",
-                        fontWeight: "600"
-                      }}
-                    >
-                      {pageNumber}
-                    </button>
-                  ))}
+                  {/* Desktop Page Numbers */}
+                  <div className="pagination-numbers" style={{ display: "flex", gap: "8px" }}>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNumber => (
+                      <button
+                        key={pageNumber}
+                        onClick={() => setLedgerPage(pageNumber)}
+                        style={{ 
+                          padding: "8px 14px", 
+                          background: ledgerPage === pageNumber ? "#0f172a" : "white", 
+                          color: ledgerPage === pageNumber ? "white" : "var(--text-main)", 
+                          border: "1px solid var(--border-color)", 
+                          borderRadius: "6px",
+                          fontWeight: "600"
+                        }}
+                      >
+                        {pageNumber}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Mobile Only Label */}
+                  <div className="pagination-mobile-label" style={{ display: "none" }}>
+                    Page {ledgerPage} of {totalPages}
+                  </div>
 
                   <button 
                     onClick={() => setLedgerPage(prev => Math.min(prev + 1, totalPages))} 
                     disabled={ledgerPage === totalPages}
-                    style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === totalPages ? 0.5 : 1 }}
+                    className="pagination-btn"
+                    style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: ledgerPage === totalPages ? 0.5 : 1 }}
                   >
                     Next &gt;
                   </button>
