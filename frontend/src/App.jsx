@@ -151,7 +151,13 @@ function StudentView({ session, onLogout }) {
                 <div className="table-wrap">
                   <table className="data-table">
                     <thead><tr><th>#</th><th>Date</th><th className="right">Amount</th></tr></thead>
-                    <tbody>{summary.payments.map((payment, index) => (<tr key={payment.id ?? index}><td>{index + 1}</td><td>{payment.date}</td><td className="right amount-green">{money(payment.amount)}</td></tr>))}</tbody>
+                    <tbody>{summary.payments.map((payment, index) => (
+                      <tr key={payment.id ?? index}>
+                        <td data-label="#">{index + 1}</td>
+                        <td data-label="Date">{payment.date}</td>
+                        <td data-label="Amount" className="right amount-green">{money(payment.amount)}</td>
+                      </tr>
+                    ))}</tbody>
                     <tfoot><tr><td colSpan="2"><strong>Total Shared</strong></td><td className="right"><strong>{money(summary.paid)}</strong></td></tr></tfoot>
                   </table>
                 </div>
@@ -265,8 +271,11 @@ function SuperAdminView({ session, onLogout }) {
                 <tbody>
                   {admins.map((a, i) => (
                     <tr key={a.id}>
-                      <td>{i + 1}</td><td>{a.name}</td><td className="mono">{a.student_id}</td><td><strong>{a.section}</strong></td>
-                      <td className="right action-cell">
+                      <td data-label="#">{i + 1}</td>
+                      <td data-label="Admin Name">{a.name}</td>
+                      <td data-label="Admin ID" className="mono">{a.student_id}</td>
+                      <td data-label="Section"><strong>{a.section}</strong></td>
+                      <td data-label="Action" className="right action-cell">
                         <button className="btn-inspect" onClick={() => inspectSection(a.section)}>Inspect</button>
                         <button className="btn-inspect" style={{ color: "#dc2626", borderColor: "#fecaca" }} onClick={() => resetAdminPassword(a.student_id, a.name)}>Reset Pass</button>
                         <button className="btn-delete" onClick={() => deleteSection(a.section)}>Delete</button>
@@ -302,7 +311,14 @@ function SuperAdminView({ session, onLogout }) {
                 {logs.length === 0 ? <p>No security logs found.</p> : (
                   <div className="table-wrap"><table className="data-table">
                     <thead><tr><th>#</th><th>IP Address</th><th>Event</th><th>Date & Time</th></tr></thead>
-                    <tbody>{logs.map((log, i) => (<tr key={log.id}><td>{i + 1}</td><td className="mono">{log.ip_address}</td><td><span style={{ color: "#dc2626", fontWeight: "bold" }}>{log.event_type}</span></td><td>{new Date(log.created_at).toLocaleString()}</td></tr>))}</tbody>
+                    <tbody>{logs.map((log, i) => (
+                      <tr key={log.id}>
+                        <td data-label="#">{i + 1}</td>
+                        <td data-label="IP Address" className="mono">{log.ip_address}</td>
+                        <td data-label="Event"><span style={{ color: "#dc2626", fontWeight: "bold" }}>{log.event_type}</span></td>
+                        <td data-label="Date & Time">{new Date(log.created_at).toLocaleString()}</td>
+                      </tr>
+                    ))}</tbody>
                   </table></div>
                 )}
               </div>
@@ -320,7 +336,13 @@ function SuperAdminView({ session, onLogout }) {
                 <div className="table-wrap" style={{ maxHeight: "300px", overflowY: "auto" }}>
                   <table className="data-table">
                     <thead><tr><th>#</th><th>Student ID</th><th>Name</th></tr></thead>
-                    <tbody>{inspectData.students.length === 0 ? (<tr><td colSpan="3">No students in this section yet.</td></tr>) : (inspectData.students.map((s, i) => (<tr key={s.id}><td>{i + 1}</td><td className="mono">{s.student_id}</td><td>{s.name}</td></tr>)))}</tbody>
+                    <tbody>{inspectData.students.length === 0 ? (<tr><td colSpan="3">No students in this section yet.</td></tr>) : (inspectData.students.map((s, i) => (
+                      <tr key={s.id}>
+                        <td data-label="#">{i + 1}</td>
+                        <td data-label="Student ID" className="mono">{s.student_id}</td>
+                        <td data-label="Name">{s.name}</td>
+                      </tr>
+                    )))}</tbody>
                   </table>
                 </div>
               </div>
@@ -549,11 +571,11 @@ function AdminView({ session, onLogout }) {
 
                       return (
                         <tr key={log.id}>
-                          <td>{i + 1}</td>
-                          <td><span style={{ color: "#dc2626", fontWeight: "600" }}>{log.event_type}</span></td>
-                          <td className="mono">{log.ip_address}</td>
-                          <td>{new Date(log.created_at).toLocaleString()}</td>
-                          <td className="right action-cell">
+                          <td data-label="#">{i + 1}</td>
+                          <td data-label="Info"><span style={{ color: "#dc2626", fontWeight: "600" }}>{log.event_type}</span></td>
+                          <td data-label="IP Address" className="mono">{log.ip_address}</td>
+                          <td data-label="Date & Time">{new Date(log.created_at).toLocaleString()}</td>
+                          <td data-label="Action" className="right action-cell">
                             {blockedId && (
                               <button className="btn-inspect" onClick={() => handleUnblock(blockedId)} disabled={busyAction}>Unblock Student</button>
                             )}
@@ -580,12 +602,12 @@ function AdminView({ session, onLogout }) {
                   <tbody>
                     {approvals.map((a, i) => (
                       <tr key={a.id}>
-                        <td>{i + 1}</td>
-                        <td>{a.name}</td>
-                        <td className="mono">{a.student_id}</td>
-                        <td className="amount-green"><strong>{money(a.amount)}</strong></td>
-                        <td>{new Date(a.created_at).toLocaleString()}</td>
-                        <td className="right action-cell">
+                        <td data-label="#">{i + 1}</td>
+                        <td data-label="Student Name">{a.name}</td>
+                        <td data-label="Student ID" className="mono">{a.student_id}</td>
+                        <td data-label="Amount" className="amount-green"><strong>{money(a.amount)}</strong></td>
+                        <td data-label="Date & Time">{new Date(a.created_at).toLocaleString()}</td>
+                        <td data-label="Action" className="right action-cell">
                           <button className="btn-inspect" onClick={() => handleApproval(a.id, "approve")} disabled={busyAction} style={{ color: "#059669", borderColor: "#a7f3d0" }}>Approve</button>
                           <button className="btn-delete" onClick={() => handleApproval(a.id, "reject")} disabled={busyAction}>Reject</button>
                         </td>
@@ -612,15 +634,15 @@ function AdminView({ session, onLogout }) {
                   <tbody>
                     {ledger.map((item, i) => (
                       <tr key={`${item.type}-${item.id}`}>
-                        <td>{i + 1}</td>
-                        <td>{new Date(item.date).toLocaleDateString()}</td>
-                        <td>
+                        <td data-label="#">{i + 1}</td>
+                        <td data-label="Date">{new Date(item.date).toLocaleDateString()}</td>
+                        <td data-label="Type">
                           <span style={{ padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2", color: item.type === "Deposit" ? "#065f46" : "#991b1b" }}>
                             {item.type}
                           </span>
                         </td>
-                        <td>{item.description}</td>
-                        <td className={`right ${item.type === "Deposit" ? "amount-green" : "amount-red"}`}>
+                        <td data-label="Description">{item.description}</td>
+                        <td data-label="Amount" className={`right ${item.type === "Deposit" ? "amount-green" : "amount-red"}`}>
                           <strong>{item.type === "Deposit" ? "+" : "-"} {money(item.amount)}</strong>
                         </td>
                       </tr>
@@ -644,8 +666,11 @@ function AdminView({ session, onLogout }) {
                   <tbody>
                     {students.map((s, i) => (
                       <tr key={s.id}>
-                        <td>{i + 1}</td><td className="mono">{s.student_id}</td><td>{s.name}</td><td style={{ color: "var(--text-muted)", fontSize: "13px" }}>{s.created_at}</td>
-                        <td className="right action-cell">
+                        <td data-label="#">{i + 1}</td>
+                        <td data-label="ID" className="mono">{s.student_id}</td>
+                        <td data-label="Name">{s.name}</td>
+                        <td data-label="Created" style={{ color: "var(--text-muted)", fontSize: "13px" }}>{s.created_at}</td>
+                        <td data-label="Action" className="right action-cell">
                           <button className="btn-inspect" onClick={() => resetStudentPassword(s.student_id)} disabled={busyAction}>Reset Pass</button>
                           <button className="btn-delete" onClick={() => removeItem(`/admin/students/${s.id}`, "student")} disabled={busyAction}>Delete</button>
                         </td>
@@ -665,7 +690,16 @@ function AdminView({ session, onLogout }) {
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{payments.map((p, i) => (<tr key={p.id}><td>{i + 1}</td><td className="mono">{p.student_id}</td><td>{p.name}</td><td>{p.date}</td><td className="right amount-green">{money(p.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button></td></tr>))}</tbody>
+                  <tbody>{payments.map((p, i) => (
+                    <tr key={p.id}>
+                      <td data-label="#">{i + 1}</td>
+                      <td data-label="ID" className="mono">{p.student_id}</td>
+                      <td data-label="Name">{p.name}</td>
+                      <td data-label="Date">{p.date}</td>
+                      <td data-label="Amount" className="right amount-green">{money(p.amount)}</td>
+                      <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button></td>
+                    </tr>
+                  ))}</tbody>
                   <tfoot><tr><td colSpan="4"><strong>Total</strong></td><td className="right"><strong>{money(totalPayments)}</strong></td><td></td></tr></tfoot>
                 </table>
               </div>
@@ -680,7 +714,15 @@ function AdminView({ session, onLogout }) {
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>#</th><th>Description</th><th>Date</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                  <tbody>{expenses.map((e, i) => (<tr key={e.id}><td>{i + 1}</td><td>{e.description}</td><td>{e.date}</td><td className="right amount-red">{money(e.amount)}</td><td className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button></td></tr>))}</tbody>
+                  <tbody>{expenses.map((e, i) => (
+                    <tr key={e.id}>
+                      <td data-label="#">{i + 1}</td>
+                      <td data-label="Description">{e.description}</td>
+                      <td data-label="Date">{e.date}</td>
+                      <td data-label="Amount" className="right amount-red">{money(e.amount)}</td>
+                      <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button></td>
+                    </tr>
+                  ))}</tbody>
                   <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
                 </table>
               </div>
