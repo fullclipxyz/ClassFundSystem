@@ -744,9 +744,9 @@ function AdminView({ session, onLogout }) {
             <div className="form-card" style={{ marginBottom: "24px" }}>
               <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
               <form onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }}>
-                <div><label>Student ID</label><input placeholder="Min 6 chars" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required style={{ marginBottom: 0 }} /></div>
+                <div><label>Student ID</label><input placeholder="e.g. 2024001" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required style={{ marginBottom: 0 }} /></div>
                 <div><label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required style={{ marginBottom: 0 }} /></div>
-                <div><label>Password</label><input type="password" placeholder="Min 6 chars" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required style={{ marginBottom: 0 }} /></div>
+                <div><label>Password</label><input type="password" placeholder="Create a strong password" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required style={{ marginBottom: 0 }} /></div>
                 <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
               </form>
             </div>
@@ -964,7 +964,7 @@ function App() {
         <form className="login-form" onSubmit={handleSubmit}>
           <label>ID</label>
           <input 
-            placeholder={isRegistering ? "Min 6 characters" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
+            placeholder={isRegistering ? "Enter Admin ID" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
             value={studentId} 
             onChange={e => setStudentId(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} 
             minLength={isRegistering ? 6 : undefined}
@@ -980,7 +980,7 @@ function App() {
           )}
           
           <label>Password</label>
-          <input type="password" placeholder="Min 6 characters" value={password} onChange={e => setPassword(e.target.value)} minLength={isRegistering ? 6 : undefined} required />
+          <input type="password" placeholder={isRegistering ? "Create a strong password" : "Enter your password"} value={password} onChange={e => setPassword(e.target.value)} minLength={isRegistering ? 6 : undefined} required />
           
           <button className="login-button" type="submit" disabled={loading}>{loading ? "Wait..." : isRegistering ? "Register" : "Sign in"}</button>
         </form>
