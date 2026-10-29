@@ -377,6 +377,11 @@ function AdminView({ session, onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
+  // Ledger Filter & Pagination State
+  const [ledgerSearch, setLedgerSearch] = useState("");
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const itemsPerPage = 10;
+
   const [student, setStudent] = useState({ studentId: "", name: "", password: "" });
   const [payment, setPayment] = useState({ studentId: "", amount: "" });
   const [expense, setExpense] = useState({ description: "", amount: "" });
@@ -481,7 +486,25 @@ function AdminView({ session, onLogout }) {
   const totalPayments = payments.reduce((s, p) => s + Number(p.amount), 0);
   const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
 
-  const handleTabClick = (tab) => { setActiveTab(tab); setMessage(""); setIsSidebarOpen(false); };
+  // Ledger Filter Logic
+  const filteredLedger = ledger.filter(item => {
+    if (!ledgerSearch) return true;
+    const searchLower = ledgerSearch.toLowerCase();
+    return item.description.toLowerCase().includes(searchLower) || item.type.toLowerCase().includes(searchLower);
+  });
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredLedger.length / itemsPerPage);
+  const indexOfLastItem = ledgerPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentLedgerItems = filteredLedger.slice(indexOfFirstItem, indexOfLastItem);
+
+  const handleTabClick = (tab) => { 
+    setActiveTab(tab); 
+    setMessage(""); 
+    setIsSidebarOpen(false); 
+    setLedgerPage(1); // Reset page when clicking tab
+  };
 
   if (showPasswordPrompt) {
     return (
@@ -622,38 +645,77 @@ function AdminView({ session, onLogout }) {
         {activeTab === "ledger" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="FINANCIAL RECORD" title="General Ledger" description="A complete history of all money in and money out." />
-            {ledger.length === 0 ? (
-              <div className="empty-state"><h3>No transactions yet</h3></div>
+
+            {/* SEARCH FILTER */}
+            <div style={{ marginBottom: "20px", maxWidth: "400px" }}>
+              <label>Filter by Student (Name or ID)</label>
+              <input 
+                type="text" 
+                placeholder="e.g. '333' or 'eee'" 
+                value={ledgerSearch} 
+                onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} 
+                style={{ marginBottom: 0 }}
+              />
+            </div>
+
+            {filteredLedger.length === 0 ? (
+              <div className="empty-state"><h3>No transactions found</h3></div>
             ) : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr>
-                  </thead>
-                  <tbody>
-                    {ledger.map((item, i) => (
-                      <tr key={`${item.type}-${item.id}`}>
-                        <td data-label="#">{i + 1}</td>
-                        <td data-label="Date">{new Date(item.date).toLocaleDateString()}</td>
-                        <td data-label="Type">
-                          <span style={{ padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2", color: item.type === "Deposit" ? "#065f46" : "#991b1b" }}>
-                            {item.type}
-                          </span>
-                        </td>
-                        <td data-label="Description">{item.description}</td>
-                        <td data-label="Amount" className={`right ${item.type === "Deposit" ? "amount-green" : "amount-red"}`}>
-                          <strong>{item.type === "Deposit" ? "+" : "-"} {money(item.amount)}</strong>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr>
+                    </thead>
+                    <tbody>
+                      {currentLedgerItems.map((item, i) => (
+                        <tr key={`${item.type}-${item.id}`}>
+                          <td data-label="#">{indexOfFirstItem + i + 1}</td>
+                          <td data-label="Date">{new Date(item.date).toLocaleDateString()}</td>
+                          <td data-label="Type">
+                            <span style={{ padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2", color: item.type === "Deposit" ? "#065f46" : "#991b1b" }}>
+                              {item.type}
+                            </span>
+                          </td>
+                          <td data-label="Description">{item.description}</td>
+                          <td data-label="Amount" className={`right ${item.type === "Deposit" ? "amount-green" : "amount-red"}`}>
+                            <strong>{item.type === "Deposit" ? "+" : "-"} {money(item.amount)}</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* PAGINATION CONTROLS */}
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", marginTop: "24px" }}>
+                    <button 
+                      onClick={() => setLedgerPage(prev => Math.max(prev - 1, 1))} 
+                      disabled={ledgerPage === 1}
+                      style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)" }}
+                    >
+                      Prev
+                    </button>
+                    
+                    <span style={{ fontWeight: "600", color: "var(--text-muted)" }}>
+                      Page {ledgerPage} of {totalPages}
+                    </span>
+                    
+                    <button 
+                      onClick={() => setLedgerPage(prev => Math.min(prev + 1, totalPages))} 
+                      disabled={ledgerPage === totalPages}
+                      style={{ padding: "8px 16px", background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)" }}
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
 
-        {/* MOVED ADD STUDENT FORM HERE */}
         {activeTab === "students" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="USER DIRECTORY" title={`${session.user.section} Students`} description="View and add students." />
@@ -694,7 +756,6 @@ function AdminView({ session, onLogout }) {
           </div>
         )}
 
-        {/* MOVED RECORD PAYMENT FORM HERE */}
         {activeTab === "deposits" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="TRANSACTIONS" title="All Deposits" description="Record payments and view student contributions." />
@@ -742,7 +803,6 @@ function AdminView({ session, onLogout }) {
           </div>
         )}
 
-        {/* MOVED LOG EXPENSE FORM HERE */}
         {activeTab === "expenses" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="TRANSACTIONS" title="All Expenses" description="Log spending and track expenses." />
