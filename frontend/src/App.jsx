@@ -394,6 +394,8 @@ function AdminView({ session, onLogout }) {
   const [activeTab, setActiveTab] = useState("overview"); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  
+  const [showArchivedExpenses, setShowArchivedExpenses] = useState(false);
 
   const itemsPerPage = 10;
   const [studentPage, setStudentPage] = useState(1);
@@ -435,9 +437,15 @@ function AdminView({ session, onLogout }) {
     return data;
   }
 
-  async function loadAll() {
+  async function loadAll(archivedExp = showArchivedExpenses) {
     const [rep, pays, exps, studs, apps, ledg, secs] = await Promise.all([
-      call("/admin/report"), call("/admin/payments"), call("/admin/expenses"), call("/admin/students"), call("/admin/approvals"), call("/admin/ledger"), call("/admin/security-logs")
+      call("/admin/report"), 
+      call("/admin/payments"), 
+      call(`/admin/expenses?archived=${archivedExp}`), 
+      call("/admin/students"), 
+      call("/admin/approvals"), 
+      call("/admin/ledger"), 
+      call("/admin/security-logs")
     ]);
     setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps); setLedger(ledg); setSecLogs(secs);
   }
@@ -693,17 +701,22 @@ function AdminView({ session, onLogout }) {
                     <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr></thead>
                     <tbody>
                       {currentLedgerItems.map((item, i) => (
-                        <tr key={`${item.type}-${item.id}`}>
+                        <tr key={`${item.type}-${item.id}`} style={{ opacity: item.is_deleted ? 0.6 : 1 }}>
                           <td data-label="#">{(ledgerPage - 1) * itemsPerPage + i + 1}</td>
                           <td data-label="Date">{new Date(item.date).toLocaleDateString()}</td>
                           <td data-label="Type">
                             <span className={`badge ${item.type === "Deposit" ? "badge-in" : "badge-out"}`}>
                               {item.type}
                             </span>
+                            {item.is_deleted === 1 && (
+                              <span className="badge" style={{ background: "#fee2e2", color: "#991b1b", marginLeft: "6px" }}>Deleted</span>
+                            )}
                           </td>
                           <td data-label="Description">{item.description}</td>
                           <td data-label="Amount" className={`right ${item.type === "Deposit" ? "amount-green" : "amount-red"}`}>
-                            <strong>{item.type === "Deposit" ? "+" : "-"} {money(item.amount)}</strong>
+                            <strong style={{ textDecoration: item.is_deleted ? "line-through" : "none" }}>
+                              {item.type === "Deposit" ? "+" : "-"} {money(item.amount)}
+                            </strong>
                           </td>
                         </tr>
                       ))}
@@ -811,32 +824,67 @@ function AdminView({ session, onLogout }) {
 
         {activeTab === "expenses" && (
           <div className="tab-content fade-in">
-            <PageHeader eyebrow="TRANSACTIONS" title="All Expenses" description="Log spending and track expenses." />
+            <PageHeader 
+              eyebrow="TRANSACTIONS" 
+              title={showArchivedExpenses ? "Archived Expenses" : "All Expenses"} 
+              description={showArchivedExpenses ? "Review deleted expense history." : "Log spending and track expenses."} 
+              action={
+                <button 
+                  className="button-secondary" 
+                  onClick={() => { setShowArchivedExpenses(!showArchivedExpenses); loadAll(!showArchivedExpenses); }}
+                >
+                  {showArchivedExpenses ? "← Back to Active" : "View Archived"}
+                </button>
+              }
+            />
 
-            <div className="form-card" style={{ marginBottom: "24px" }}>
-              <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
-              <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
-                <div><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
-              </form>
-            </div>
+            {!showArchivedExpenses && (
+              <div className="form-card" style={{ marginBottom: "24px" }}>
+                <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
+                <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
+                  <div><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+                  <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+                  <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
+                </form>
+              </div>
+            )}
 
-            {expenses.length === 0 ? <div className="empty-state"><h3>No expenses</h3></div> : (
+            {expenses.length === 0 ? (
+              <div className="empty-state">
+                <h3>{showArchivedExpenses ? "No archived expenses" : "No expenses"}</h3>
+                <p>{showArchivedExpenses ? "You have no deleted records." : "Start by logging a new expense above."}</p>
+              </div>
+            ) : (
               <>
                 <div className="table-wrap">
                   <table className="data-table">
-                    <thead><tr><th>#</th><th>Description</th><th>Date</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                    <tbody>{currentExpenses.map((e, i) => (
-                      <tr key={e.id}>
-                        <td data-label="#">{(expensePage - 1) * itemsPerPage + i + 1}</td>
-                        <td data-label="Description">{e.description}</td>
-                        <td data-label="Date">{e.date}</td>
-                        <td data-label="Amount" className="right amount-red">{money(e.amount)}</td>
-                        <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button></td>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th className="right">Amount</th>
+                        {!showArchivedExpenses && <th className="right">Action</th>}
                       </tr>
-                    ))}</tbody>
-                    <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
+                    </thead>
+                    <tbody>
+                      {currentExpenses.map((e, i) => (
+                        <tr key={e.id}>
+                          <td data-label="#">{(expensePage - 1) * itemsPerPage + i + 1}</td>
+                          <td data-label="Description">{e.description}</td>
+                          <td data-label="Date">{e.date}</td>
+                          <td data-label="Amount" className="right amount-red">{money(e.amount)}</td>
+                          {!showArchivedExpenses && (
+                            <td data-label="Action" className="right action-cell">
+                              <button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                    {!showArchivedExpenses && (
+                      <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
+                    )}
                   </table>
                 </div>
                 <Pagination currentPage={expensePage} totalPages={expenseTotalPages} onPageChange={setExpensePage} />

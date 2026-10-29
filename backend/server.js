@@ -14,7 +14,7 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// ==================== RATE LIMITER (STUDENT ONLY) ====================
+// ==================== RATE LIMITER ====================
 const studentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 5, 
@@ -25,10 +25,8 @@ const studentLimiter = rateLimit({
     try {
       const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
       const studentId = req.body.studentId || "Unknown";
-      
       const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
       const section = users.length > 0 ? users[0].section : null;
-
       await db.query(
         "INSERT INTO security_logs (ip_address, event_type, section) VALUES (?, ?, ?)",
         [ip, `Blocked Login (ID: ${studentId})`, section]
@@ -39,7 +37,6 @@ const studentLimiter = rateLimit({
 });
 
 app.set('studentLimiter', studentLimiter);
-
 app.get("/", (req, res) => { res.json({ message: "Class Fund API is running" }); });
 
 // ==================== LOGIN ====================
@@ -50,15 +47,10 @@ app.post("/login", async (req, res, next) => {
 
     const [rows] = await db.query("SELECT id, student_id, name, password_hash, role, section, is_default_password FROM users WHERE student_id = ?", [studentId]);
     const user = rows[0];
-    
     if (!user) return res.status(401).json({ error: "Invalid ID or password" });
 
-    if (loginRole === "student" && user.role !== 0) {
-      return res.status(401).json({ error: "Invalid ID or password" });
-    }
-    if (loginRole === "admin" && user.role === 0) {
-      return res.status(401).json({ error: "Invalid ID or password" });
-    }
+    if (loginRole === "student" && user.role !== 0) return res.status(401).json({ error: "Invalid ID or password" });
+    if (loginRole === "admin" && user.role === 0) return res.status(401).json({ error: "Invalid ID or password" });
 
     if (user.role === 0) {
       let limited = false;
@@ -73,10 +65,7 @@ app.post("/login", async (req, res, next) => {
 
     const token = jwt.sign({ id: user.id, role: user.role, section: user.section }, process.env.JWT_SECRET, { expiresIn: "8h" });
     res.json({ token, user: { id: user.id, name: user.name, role: user.role, section: user.section, isDefaultPassword: user.is_default_password === 1 } });
-  } catch (err) { 
-    console.error(err);
-    res.status(500).json({ error: "Server error" }); 
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 // ==================== REGISTER ADMIN ====================
@@ -96,13 +85,10 @@ app.post("/register-admin", async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     await db.query("INSERT INTO users (student_id, name, password_hash, role, section) VALUES (?, ?, ?, 1, ?)", [studentId, name, hash, section]);
     res.json({ message: "Admin account created successfully!" });
-  } catch (err) {
-    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "This Admin ID is already taken." });
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ============ STUDENT DEPOSIT REQUESTS ============
+// ============ STUDENT DEPOSIT ============
 app.post("/me/deposit", requireLogin, async (req, res) => {
   try {
     const { amount } = req.body;
@@ -110,16 +96,14 @@ app.post("/me/deposit", requireLogin, async (req, res) => {
     if (!(money > 0)) return res.status(400).json({ error: "Valid positive amount required" });
 
     const [existing] = await db.query("SELECT id FROM deposit_requests WHERE user_id = ? AND status = 'pending'", [req.user.id]);
-    if (existing.length > 0) {
-      return res.status(400).json({ error: "You already have a pending deposit. Please wait for the Admin to approve it." });
-    }
+    if (existing.length > 0) return res.status(400).json({ error: "You already have a pending deposit. Please wait for the Admin to approve it." });
 
     await db.query("INSERT INTO deposit_requests (user_id, amount) VALUES (?, ?)", [req.user.id, money]);
     res.json({ message: "Deposit request submitted! Waiting for admin approval." });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ============ ADMIN ROUTES ============
+// ============ ADMIN APPROVALS ============
 app.get("/admin/approvals", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -137,7 +121,6 @@ app.post("/admin/approvals/:id/approve", requireLogin, requireAdmin, async (req,
     const [reqs] = await db.query("SELECT d.id, d.amount, d.user_id FROM deposit_requests d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND u.section = ? AND d.status = 'pending'", [req.params.id, req.user.section]);
     if (reqs.length === 0) return res.status(404).json({ error: "Request not found" });
     const request = reqs[0];
-
     await db.query("INSERT INTO payments (user_id, amount, paid_date, section) VALUES (?, ?, CURDATE(), ?)", [request.user_id, request.amount, req.user.section]);
     await db.query("UPDATE deposit_requests SET status = 'approved' WHERE id = ?", [req.params.id]);
     res.json({ message: "Deposit approved and added to records!" });
@@ -152,51 +135,35 @@ app.post("/admin/approvals/:id/reject", requireLogin, requireAdmin, async (req, 
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ============ ADMIN SECURITY ROUTES ============
+// ============ ADMIN SECURITY ============
 app.get("/admin/security-logs", requireLogin, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT id, ip_address, event_type, created_at FROM security_logs WHERE section = ? ORDER BY created_at DESC LIMIT 50",
-      [req.user.section]
-    );
+    const [rows] = await db.query("SELECT id, ip_address, event_type, created_at FROM security_logs WHERE section = ? ORDER BY created_at DESC LIMIT 50", [req.user.section]);
     res.json(rows);
-  } catch (err) { 
-    console.error(err);
-    res.status(500).json({ error: "Server error" }); 
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId } = req.body;
     const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
-    if (users.length === 0 || users[0].section !== req.user.section) {
-      return res.status(403).json({ error: "Unauthorized to unblock this student." });
-    }
-
+    if (users.length === 0 || users[0].section !== req.user.section) return res.status(403).json({ error: "Unauthorized" });
     const limiter = req.app.get('studentLimiter');
-    if (limiter) {
-      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-      limiter.resetKey(ip); 
-    }
-
+    if (limiter) limiter.resetKey(req.ip);
     await db.query("DELETE FROM security_logs WHERE section = ? AND event_type LIKE ?", [req.user.section, `%${studentId}%`]);
-
     res.json({ message: `Successfully unblocked student ${studentId}.` });
-  } catch (err) { 
-    console.error("Unblock Error:", err);
-    res.status(500).json({ error: "Server error" }); 
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
+// ============ LEDGER (SHOWS SOFT DELETED) ============
 app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, type, description, amount, date FROM (
-        SELECT p.id, 'Deposit' as type, CONCAT(u.name, ' (', u.student_id, ')') as description, p.amount, p.paid_date as date
+      `SELECT id, type, description, amount, date, is_deleted FROM (
+        SELECT p.id, 'Deposit' as type, CONCAT(u.name, ' (', u.student_id, ')') as description, p.amount, p.paid_date as date, p.is_deleted
         FROM payments p JOIN users u ON u.id = p.user_id WHERE p.section = ?
         UNION ALL
-        SELECT e.id, 'Expense' as type, e.description, e.amount, e.expense_date as date
+        SELECT e.id, 'Expense' as type, e.description, e.amount, e.expense_date as date, e.is_deleted
         FROM expenses e WHERE e.section = ?
       ) AS ledger ORDER BY date DESC, id DESC`,
       [req.user.section, req.user.section]
@@ -205,6 +172,7 @@ app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
+// ============ STUDENTS ============
 app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, name, password } = req.body;
@@ -248,6 +216,7 @@ app.post("/admin/reset-password", requireLogin, requireAdmin, async (req, res) =
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
+// ============ PAYMENTS (HIDES SOFT DELETED) ============
 app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { studentId, amount, date } = req.body;
@@ -262,19 +231,20 @@ app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
 
 app.get("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT p.id, p.amount, DATE_FORMAT(p.paid_date, '%Y-%m-%d %h:%i %p') AS date, u.student_id, u.name FROM payments p JOIN users u ON u.id = p.user_id WHERE p.section = ? ORDER BY p.paid_date DESC, p.id DESC", [req.user.section]);
+    const [rows] = await db.query("SELECT p.id, p.amount, DATE_FORMAT(p.paid_date, '%Y-%m-%d %h:%i %p') AS date, u.student_id, u.name FROM payments p JOIN users u ON u.id = p.user_id WHERE p.section = ? AND p.is_deleted = FALSE ORDER BY p.paid_date DESC, p.id DESC", [req.user.section]);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 app.delete("/admin/payments/:id", requireLogin, requireAdmin, async (req, res) => {
   try {
-    const [result] = await db.query("DELETE FROM payments WHERE id = ? AND section = ?", [req.params.id, req.user.section]);
+    const [result] = await db.query("UPDATE payments SET is_deleted = TRUE WHERE id = ? AND section = ?", [req.params.id, req.user.section]);
     if (result.affectedRows === 0) return res.status(404).json({ error: "Payment not found" });
-    res.json({ message: "Payment deleted" });
+    res.json({ message: "Payment removed from active list. Audit trail preserved." });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
+// ============ EXPENSES (HIDES SOFT DELETED) ============
 app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   try {
     const { description, amount, date } = req.body;
@@ -285,27 +255,33 @@ app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
+// UPDATED: Fetch Active vs Archived Expenses
 app.get("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT id, description, amount, DATE_FORMAT(expense_date, '%Y-%m-%d') AS date FROM expenses WHERE section = ? ORDER BY expense_date DESC, id DESC", [req.user.section]);
+    const showArchived = req.query.archived === "true";
+    const query = showArchived 
+      ? "SELECT id, description, amount, DATE_FORMAT(expense_date, '%Y-%m-%d') AS date, is_deleted FROM expenses WHERE section = ? AND is_deleted = TRUE ORDER BY expense_date DESC, id DESC"
+      : "SELECT id, description, amount, DATE_FORMAT(expense_date, '%Y-%m-%d') AS date, is_deleted FROM expenses WHERE section = ? AND is_deleted = FALSE ORDER BY expense_date DESC, id DESC";
+    const [rows] = await db.query(query, [req.user.section]);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 app.delete("/admin/expenses/:id", requireLogin, requireAdmin, async (req, res) => {
   try {
-    const [result] = await db.query("DELETE FROM expenses WHERE id = ? AND section = ?", [req.params.id, req.user.section]);
+    const [result] = await db.query("UPDATE expenses SET is_deleted = TRUE WHERE id = ? AND section = ?", [req.params.id, req.user.section]);
     if (result.affectedRows === 0) return res.status(404).json({ error: "Expense not found" });
-    res.json({ message: "Expense deleted" });
+    res.json({ message: "Expense removed from active list. Audit trail preserved." });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
+// ============ SUMMARY & REPORT ============
 app.get("/me/summary", requireLogin, async (req, res) => {
   try {
-    const [payments] = await db.query("SELECT id, amount, DATE_FORMAT(paid_date, '%Y-%m-%d') AS date FROM payments WHERE user_id = ? ORDER BY paid_date DESC, id DESC", [req.user.id]);
+    const [payments] = await db.query("SELECT id, amount, DATE_FORMAT(paid_date, '%Y-%m-%d') AS date FROM payments WHERE user_id = ? AND is_deleted = FALSE ORDER BY paid_date DESC, id DESC", [req.user.id]);
     const paid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [req.user.section]);
-    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [req.user.section]);
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
     res.json({ paid, totalClassFund: Number(allC.total) - Number(allE.total), payments });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
@@ -327,10 +303,10 @@ app.get("/admin/report", requireLogin, requireAdmin, async (req, res) => {
     const month = req.query.month || thisMonth;
     if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "Month must look like 2026-10" });
     const start = month + "-01";
-    const [[c]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND paid_date >= ? AND paid_date < DATE_ADD(?, INTERVAL 1 MONTH)", [req.user.section, start, start]);
-    const [[e]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND expense_date >= ? AND expense_date < DATE_ADD(?, INTERVAL 1 MONTH)", [req.user.section, start, start]);
-    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [req.user.section]);
-    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [req.user.section]);
+    const [[c]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND paid_date >= ? AND paid_date < DATE_ADD(?, INTERVAL 1 MONTH) AND is_deleted = FALSE", [req.user.section, start, start]);
+    const [[e]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND expense_date >= ? AND expense_date < DATE_ADD(?, INTERVAL 1 MONTH) AND is_deleted = FALSE", [req.user.section, start, start]);
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
     res.json({ month, collected: Number(c.total), expenses: Number(e.total), monthNet: Number(c.total) - Number(e.total), cashOnHand: Number(allC.total) - Number(allE.total) });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
@@ -345,8 +321,8 @@ app.get("/super-admin/sections/:sectionName", requireLogin, async (req, res) => 
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
   try {
     const [students] = await db.query("SELECT id, student_id, name FROM users WHERE role = 0 AND section = ? ORDER BY name ASC", [req.params.sectionName]);
-    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ?", [req.params.sectionName]);
-    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ?", [req.params.sectionName]);
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND is_deleted = FALSE", [req.params.sectionName]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND is_deleted = FALSE", [req.params.sectionName]);
     res.json({ students, cashOnHand: Number(allC.total) - Number(allE.total) });
   } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
@@ -365,14 +341,9 @@ app.post("/super-admin/reset-limits", requireLogin, async (req, res) => {
   if (req.user.role !== 2) return res.status(403).json({ error: "Super Admin only" });
   try {
     const limiter = req.app.get('studentLimiter');
-    if (limiter) { 
-      limiter.resetKey(req.ip); 
-    }
+    if (limiter) limiter.resetKey(req.ip);
     res.json({ message: "Successfully unblocked all IP addresses." });
-  } catch (err) { 
-    console.error("Reset Limit Error:", err);
-    res.status(500).json({ error: "Server error" }); 
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
 app.get("/super-admin/logs", requireLogin, async (req, res) => {
