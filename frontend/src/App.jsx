@@ -35,55 +35,27 @@ function Notice({ children, type = "info" }) {
   return <div className={`notice notice-${type}`} role="status">{children}</div>;
 }
 
-/* ==================== PAGINATION COMPONENT ==================== */
 function Pagination({ currentPage, totalPages, onPageChange }) {
   return (
-    <div className="pagination-container">
-      <button 
-        onClick={() => onPageChange(Math.max(currentPage - 1, 1))} 
-        disabled={currentPage === 1}
-        className="pagination-btn"
-        style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: currentPage === 1 ? 0.5 : 1 }}
-      >
-        &lt; Back
+    <nav className="pagination-container" aria-label="Pagination">
+      <button type="button" className="pagination-btn" onClick={() => onPageChange(Math.max(currentPage - 1, 1))} disabled={currentPage === 1}>
+        Back
       </button>
-      
-      <div className="pagination-numbers" style={{ display: "flex", gap: "8px" }}>
-        {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNumber => (
-          <button
-            key={pageNumber}
-            onClick={() => onPageChange(pageNumber)}
-            style={{ 
-              padding: "8px 14px", 
-              background: currentPage === pageNumber ? "#0f172a" : "white", 
-              color: currentPage === pageNumber ? "white" : "var(--text-main)", 
-              border: "1px solid var(--border-color)", 
-              borderRadius: "6px",
-              fontWeight: "600"
-            }}
-          >
-            {pageNumber}
+      <div className="pagination-numbers">
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+          <button type="button" key={n} className={`page-num ${currentPage === n ? "active" : ""}`} onClick={() => onPageChange(n)}>
+            {n}
           </button>
         ))}
       </div>
-
-      <div className="pagination-mobile-label" style={{ display: "none" }}>
-        Page {currentPage} of {totalPages}
-      </div>
-
-      <button 
-        onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))} 
-        disabled={currentPage === totalPages}
-        className="pagination-btn"
-        style={{ background: "white", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "6px", opacity: currentPage === totalPages ? 0.5 : 1 }}
-      >
-        Next &gt;
+      <span className="pagination-mobile-label">Page {currentPage} of {totalPages}</span>
+      <button type="button" className="pagination-btn" onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))} disabled={currentPage === totalPages}>
+        Next
       </button>
-    </div>
+    </nav>
   );
 }
 
-/* ==================== STUDENT VIEW ==================== */
 function StudentView({ session, onLogout }) {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState("");
@@ -219,7 +191,6 @@ function StudentView({ session, onLogout }) {
   );
 }
 
-/* ==================== SUPER ADMIN VIEW ==================== */
 function SuperAdminView({ session, onLogout }) {
   const [activeTab, setActiveTab] = useState("sections");
   const [admins, setAdmins] = useState([]);
@@ -354,7 +325,7 @@ function SuperAdminView({ session, onLogout }) {
         {showLogs && (
           <div className="modal-overlay">
             <div className="modal-content" style={{ maxWidth: "800px" }}>
-              <div className="modal-header"><h2>Security Logs</h2><button onClick={() => setShowLogs(false)} style={{ display: "block", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", padding: "6px 12px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer", fontSize: "16px" }}>✕</button></div>
+              <div className="modal-header"><h2>Security Logs</h2><button className="modal-close" aria-label="Close" onClick={() => setShowLogs(false)}>✕</button></div>
               <div className="modal-body">
                 {logs.length === 0 ? <p>No security logs found.</p> : (
                   <div className="table-wrap"><table className="data-table">
@@ -377,7 +348,7 @@ function SuperAdminView({ session, onLogout }) {
         {inspectData && (
           <div className="modal-overlay">
             <div className="modal-content">
-              <div className="modal-header"><h2>Section: {inspectData.section}</h2><button onClick={() => setInspectData(null)} style={{ display: "block", background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", padding: "6px 12px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer", fontSize: "16px" }}>✕</button></div>
+              <div className="modal-header"><h2>Section: {inspectData.section}</h2><button className="modal-close" aria-label="Close" onClick={() => setInspectData(null)}>✕</button></div>
               <div className="modal-body">
                 <div style={{ marginBottom: "20px" }}><p>Total Cash on Hand: <strong className="amount-green">{money(inspectData.cashOnHand)}</strong></p></div>
                 <h3>Students in this section ({inspectData.students.length})</h3>
@@ -402,7 +373,6 @@ function SuperAdminView({ session, onLogout }) {
   );
 }
 
-/* ==================== ADMIN VIEW (SECTION) ==================== */
 function AdminView({ session, onLogout }) {
   const [report, setReport] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -594,7 +564,7 @@ function AdminView({ session, onLogout }) {
           <button className={activeTab === "overview" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("overview")}>Overview</button>
           
           <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("approvals")}>
-            Approvals {approvals.length > 0 && <span style={{ background: "#ef4444", color: "white", borderRadius: "50%", padding: "2px 8px", fontSize: "12px", marginLeft: "auto" }}>{approvals.length}</span>}
+            Approvals {approvals.length > 0 && <span className="nav-badge">{approvals.length}</span>}
           </button>
           
           <button className={activeTab === "students" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("students")}>Students</button>
@@ -627,13 +597,12 @@ function AdminView({ session, onLogout }) {
             )}
             <div className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
             
-            {/* CLICKABLE RECENT ACTIVITY */}
-            <div className="activity-item" onClick={() => handleTabClick("deposits")} style={{ cursor: "pointer", transition: "background 0.2s" }} onMouseOver={(e) => e.currentTarget.style.background = "#f1f5f9"} onMouseOut={(e) => e.currentTarget.style.background = "#f8fafc"}>
+            <div className="activity-item clickable" onClick={() => handleTabClick("deposits")}>
               <div className="activity-info"><h4>Total Deposits Recorded</h4><p>All payments saved in the database</p></div>
               <div className="activity-amount" style={{ color: "#059669" }}>{payments.length} Transactions</div>
             </div>
 
-            <div className="activity-item" onClick={() => handleTabClick("expenses")} style={{ cursor: "pointer", transition: "background 0.2s" }} onMouseOver={(e) => e.currentTarget.style.background = "#f1f5f9"} onMouseOut={(e) => e.currentTarget.style.background = "#f8fafc"}>
+            <div className="activity-item clickable" onClick={() => handleTabClick("expenses")}>
               <div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div>
               <div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.length} Records</div>
             </div>
@@ -728,7 +697,7 @@ function AdminView({ session, onLogout }) {
                           <td data-label="#">{(ledgerPage - 1) * itemsPerPage + i + 1}</td>
                           <td data-label="Date">{new Date(item.date).toLocaleDateString()}</td>
                           <td data-label="Type">
-                            <span style={{ padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", background: item.type === "Deposit" ? "#ecfdf5" : "#fef2f2", color: item.type === "Deposit" ? "#065f46" : "#991b1b" }}>
+                            <span className={`badge ${item.type === "Deposit" ? "badge-in" : "badge-out"}`}>
                               {item.type}
                             </span>
                           </td>
@@ -881,7 +850,6 @@ function AdminView({ session, onLogout }) {
   );
 }
 
-/* ==================== APP ROOT ==================== */
 function App() {
   const [studentId, setStudentId] = useState("");
   const [name, setName] = useState("");
@@ -951,21 +919,9 @@ function App() {
         <Brand />
         
         {!isRegistering && (
-          <div style={{ display: "flex", gap: "10px", marginBottom: "20px", background: "#f1f5f9", padding: "5px", borderRadius: "8px" }}>
-            <button 
-              type="button"
-              onClick={() => setLoginRole("student")}
-              style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "none", background: loginRole === "student" ? "white" : "transparent", boxShadow: loginRole === "student" ? "0 1px 3px rgba(0,0,0,0.1)" : "none", color: loginRole === "student" ? "var(--brand-blue)" : "var(--text-muted)", fontWeight: "600", cursor: "pointer" }}
-            >
-              Student
-            </button>
-            <button 
-              type="button"
-              onClick={() => setLoginRole("admin")}
-              style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "none", background: loginRole === "admin" ? "white" : "transparent", boxShadow: loginRole === "admin" ? "0 1px 3px rgba(0,0,0,0.1)" : "none", color: loginRole === "admin" ? "var(--brand-blue)" : "var(--text-muted)", fontWeight: "600", cursor: "pointer" }}
-            >
-              Administrator
-            </button>
+          <div className="segmented" role="tablist">
+            <button type="button" role="tab" aria-selected={loginRole === "student"} className={loginRole === "student" ? "segmented-btn active" : "segmented-btn"} onClick={() => setLoginRole("student")}>Student</button>
+            <button type="button" role="tab" aria-selected={loginRole === "admin"} className={loginRole === "admin" ? "segmented-btn active" : "segmented-btn"} onClick={() => setLoginRole("admin")}>Administrator</button>
           </div>
         )}
 
