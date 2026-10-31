@@ -1068,7 +1068,7 @@ function App() {
         </form>
 
         {!isRegistering && (
-          <p className="legal-note">By signing in, you agree to the <LegalLinks separator=" and />.</p>
+          <p className="legal-note">By signing in, you agree to the <LegalLinks separator=" and " />.</p>
         )}
 
         <div className="login-note" style={{ marginTop: '16px', textAlign: 'center' }}>
