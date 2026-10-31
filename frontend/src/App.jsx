@@ -1,7 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 const API = "https://classfundsystem.onrender.com"; 
+
+class SessionExpiredError extends Error {}
+class PasswordResetRequiredError extends Error {}
+
+async function apiFetch(session, path, { method = "GET", body } = {}) {
+  const options = { method, headers: { Authorization: `Bearer ${session.token}` } };
+  if (body !== undefined) { options.headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
+  const res = await fetch(`${API}${path}`, options);
+  let data = null;
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (res.status === 401) throw new SessionExpiredError("Session expired");
+  if (res.status === 403 && data && data.code === "PASSWORD_RESET_REQUIRED") throw new PasswordResetRequiredError(data.error);
+  if (!res.ok) throw new Error((data && data.error) || "Something went wrong.");
+  if (data === null) throw new Error("Invalid response.");
+  return data;
+}
 
 function money(value) {
   const amount = Number(value ?? 0);
@@ -70,18 +86,28 @@ function StudentView({ session, onLogout }) {
   const [depositMessage, setDepositMessage] = useState("");
   const [depositLoading, setDepositLoading] = useState(false);
 
+  const expiredRef = useRef(false);
+  function handleApiError(err) {
+    if (err instanceof SessionExpiredError) {
+      if (!expiredRef.current) { expiredRef.current = true; alert("Your session has expired. Please log in again."); onLogout(); }
+      return true;
+    }
+    if (err instanceof PasswordResetRequiredError) { setShowPasswordPrompt(true); return true; }
+    return false;
+  }
+
   useEffect(() => {
     let active = true;
-    async function load() {
+    (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API}/me/summary`, { headers: { Authorization: `Bearer ${session.token}` } });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Could not load your summary.");
+        const data = await apiFetch(session, "/me/summary");
         if (active) setSummary(data);
-      } catch (err) { if (active) setError(err.message || "Cannot reach the server."); } finally { if (active) setLoading(false); }
-    }
-    load();
+      } catch (err) {
+        if (!active) return;
+        if (!handleApiError(err)) setError(err.message || "Cannot reach the server.");
+      } finally { if (active) setLoading(false); }
+    })();
     return () => { active = false; };
   }, [session.token]);
 
@@ -107,16 +133,10 @@ function StudentView({ session, onLogout }) {
     e.preventDefault();
     setDepositLoading(true); setDepositMessage("");
     try {
-      const res = await fetch(`${API}/me/deposit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
-        body: JSON.stringify({ amount: depositAmount })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiFetch(session, "/me/deposit", { method: "POST", body: { amount: depositAmount } });
       setDepositMessage(data.message);
       setDepositAmount("");
-    } catch (err) { setDepositMessage(err.message); } finally { setDepositLoading(false); }
+    } catch (err) { if (!handleApiError(err)) setDepositMessage(err.message); } finally { setDepositLoading(false); }
   }
 
   if (showPasswordPrompt) {
@@ -207,55 +227,60 @@ function SuperAdminView({ session, onLogout }) {
   const [showLogs, setShowLogs] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  useEffect(() => { fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } }).then(res => res.json()).then(data => setAdmins(data)); }, [session.token]);
+  const expiredRef = useRef(false);
+  function handleApiError(err) {
+    if (err instanceof SessionExpiredError) {
+      if (!expiredRef.current) { expiredRef.current = true; alert("Your session has expired. Please log in again."); onLogout(); }
+      return true;
+    }
+    return false;
+  }
+
+  useEffect(() => {
+    let active = true;
+    apiFetch(session, "/super-admin/admins")
+      .then((data) => { if (active) setAdmins(Array.isArray(data) ? data : []); })
+      .catch((err) => { if (active && !handleApiError(err)) setMessage(err.message); });
+    return () => { active = false; };
+  }, [session.token]);
 
   const deleteSection = async (section) => {
     if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete the ENTIRE ${section} section?`)) return;
     try {
-      const res = await fetch(`${API}/super-admin/sections/${section}`, { method: "DELETE", headers: { Authorization: `Bearer ${session.token}` } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiFetch(session, `/super-admin/sections/${encodeURIComponent(section)}`, { method: "DELETE" });
       setMessage(data.message); setAdmins(admins.filter(a => a.section !== section));
-    } catch (err) { setMessage(err.message); }
+    } catch (err) { if (!handleApiError(err)) setMessage(err.message); }
   };
 
   const inspectSection = async (section) => {
     try {
-      const res = await fetch(`${API}/super-admin/sections/${section}`, { headers: { Authorization: `Bearer ${session.token}` } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiFetch(session, `/super-admin/sections/${encodeURIComponent(section)}`);
       setInspectData({ section, ...data });
-    } catch (err) { alert(err.message); }
+    } catch (err) { if (!handleApiError(err)) alert(err.message); }
   };
 
   const handleUnblockAll = async () => {
-    if (!window.confirm("Are you sure you want to unblock all IP addresses?")) return;
+    if (!window.confirm("Clear the login rate limit for your IP address?")) return;
     setUnblocking(true); setMessage("");
     try {
-      const res = await fetch(`${API}/super-admin/reset-limits`, { method: "POST", headers: { Authorization: `Bearer ${session.token}` } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiFetch(session, "/super-admin/reset-limits", { method: "POST" });
       setMessage(data.message);
-    } catch (err) { setMessage(err.message); } finally { setUnblocking(false); }
+    } catch (err) { if (!handleApiError(err)) setMessage(err.message); } finally { setUnblocking(false); }
   };
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch(`${API}/super-admin/logs`, { headers: { Authorization: `Bearer ${session.token}` } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiFetch(session, "/super-admin/logs");
       setLogs(data); setShowLogs(true);
-    } catch (err) { alert(err.message); }
+    } catch (err) { if (!handleApiError(err)) alert(err.message); }
   };
 
   const resetAdminPassword = async (adminId, name) => {
     if (!window.confirm(`Reset password for Admin ${name}?`)) return;
     try {
-      const res = await fetch(`${API}/super-admin/reset-admin-password`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ adminId }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiFetch(session, "/super-admin/reset-admin-password", { method: "POST", body: { adminId } });
       setMessage(data.message);
-    } catch (err) { alert(err.message); }
+    } catch (err) { if (!handleApiError(err)) alert(err.message); }
   };
 
   const handleTabClick = (tab) => { setActiveTab(tab); setMessage(""); setIsSidebarOpen(false); };
@@ -437,22 +462,19 @@ function AdminView({ session, onLogout }) {
     } catch (err) { alert(err.message); } finally { setChangingPass(false); }
   }
 
-  async function call(path, method = "GET", body) {
-    const options = { method, headers: { Authorization: `Bearer ${session.token}` } };
-    if (body !== undefined) { options.headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
-    
-    const res = await fetch(`${API}${path}`, options);
-    let data;
-    try { data = await res.json(); } catch { throw new Error("Invalid response."); }
-    
-    if (res.status === 401) {
-      alert("Your session has expired. Please log in again.");
-      onLogout();
-      return;
-    }
+  const expiredRef = useRef(false);
 
-    if (!res.ok) throw new Error(data.error || "Something went wrong.");
-    return data;
+  async function call(path, method = "GET", body) {
+    try {
+      return await apiFetch(session, path, { method, body });
+    } catch (err) {
+      if (err instanceof SessionExpiredError) {
+        if (!expiredRef.current) { expiredRef.current = true; alert("Your session has expired. Please log in again."); onLogout(); }
+      } else if (err instanceof PasswordResetRequiredError) {
+        setShowPasswordPrompt(true);
+      }
+      throw err;
+    }
   }
 
   async function loadAll(archivedExp = showArchivedExpenses) {
@@ -616,7 +638,7 @@ function AdminView({ session, onLogout }) {
             <div className="dashboard-banner"><div><h2>Welcome back, {session.user.name}!</h2><p>Here is the current financial overview for {session.user.section}.</p></div></div>
             {loading ? <p className="loading-text">Loading...</p> : report && (
               <div className="dashboard-grid">
-                <div className="color-card card-pink"><p className="stat-label">Total Collected</p><p className="stat-value">{money(report.collected)}</p><p className="stat-detail">All student contributions</p></div>
+                <div className="color-card card-pink"><p className="stat-label">Collected This Month</p><p className="stat-value">{money(report.collected)}</p><p className="stat-detail">Collected this month</p></div>
                 <div className="color-card card-blue"><p className="stat-label">Total Expenses</p><p className="stat-value">{money(report.expenses)}</p><p className="stat-detail">Funds spent this month</p></div>
                 <div className="color-card card-yellow"><p className="stat-label">Cash on Hand</p><p className="stat-value">{money(report.cashOnHand)}</p><p className="stat-detail">Available balance</p></div>
                 <div className="color-card card-purple"><p className="stat-label">Monthly Net</p><p className="stat-value">{money(report.monthNet)}</p><p className="stat-detail">Net growth this month</p></div>
@@ -945,6 +967,7 @@ function App() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [section, setSection] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState(null);
@@ -966,7 +989,7 @@ function App() {
     setLoading(true);
     
     const endpoint = isRegistering ? "/register-admin" : "/login";
-    const body = isRegistering ? { studentId, name, password, section } : { studentId, password, loginRole };
+    const body = isRegistering ? { studentId, name, password, section, inviteCode } : { studentId, password, loginRole };
     
     try {
       const res = await fetch(`${API}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1032,6 +1055,8 @@ function App() {
               <label>Full Name</label>
               <input placeholder="Enter your full name" value={name} onChange={e => setName(e.target.value.replace(/[^a-zA-Z\s]/g, ''))} required />
               <label>Section</label><input placeholder="e.g. BSIT 1A" value={section} onChange={e => setSection(e.target.value)} required />
+              <label>Invite Code</label>
+              <input type="password" placeholder="Code from the Super Admin" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required />
             </>
           )}
           

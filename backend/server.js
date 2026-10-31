@@ -1,685 +1,605 @@
-function AdminView({ session, onLogout }) {
-  const [report, setReport] = useState(null);
-  const [payments, setPayments] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [students, setStudents] = useState([]); 
-  const [approvals, setApprovals] = useState([]); 
-  const [ledger, setLedger] = useState([]);
-  const [secLogs, setSecLogs] = useState([]);
-  
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("info");
-  const [loading, setLoading] = useState(true);
-  
-  const [busyStudent, setBusyStudent] = useState(false);
-  const [busyPayment, setBusyPayment] = useState(false);
-  const [busyExpense, setBusyExpense] = useState(false);
-  const [busyAction, setBusyAction] = useState(false);
-  
-  const [activeTab, setActiveTab] = useState("overview"); 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  
-  const [showArchivedExpenses, setShowArchivedExpenses] = useState(false);
-  const [showArchivedLedger, setShowArchivedLedger] = useState(false);
+require("dotenv").config();
+const crypto = require("crypto");
+const express = require("express");
+const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
+const db = require("./db");
+const { requireLogin, requireAdmin, requireSuperAdmin, signToken } = require("./auth");
 
-  const itemsPerPage = 10;
-  const [studentPage, setStudentPage] = useState(1);
-  const [paymentPage, setPaymentPage] = useState(1);
-  const [expensePage, setExpensePage] = useState(1);
-  const [ledgerPage, setLedgerPage] = useState(1);
-  const [ledgerSearch, setLedgerSearch] = useState("");
+if (!process.env.JWT_SECRET) {
+  console.error("JWT_SECRET is missing. Set it in backend/.env and in the Render environment.");
+  process.exit(1);
+}
+if (process.env.JWT_SECRET.length < 32) {
+  console.warn("WARNING: JWT_SECRET is shorter than 32 characters. Use a long random secret.");
+}
 
-  const [student, setStudent] = useState({ studentId: "", name: "", password: "" });
-  const [payment, setPayment] = useState({ studentId: "", amount: "" });
-  const [expense, setExpense] = useState({ description: "", amount: "" });
+const app = express();
+app.set("trust proxy", 1);
+app.use(helmet());
 
-  const [showPasswordPrompt, setShowPasswordPrompt] = useState(session.user.isDefaultPassword);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [changingPass, setChangingPass] = useState(false);
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+if (allowedOrigins.length === 0) console.warn("WARNING: FRONTEND_ORIGIN is not set. CORS is open to all origins.");
+app.use(cors(allowedOrigins.length ? { origin: allowedOrigins } : {}));
 
-  async function handleChangePassword(e) {
-    e.preventDefault();
-    setChangingPass(true);
-    try {
-      const res = await fetch(`${API}/me/change-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
-        body: JSON.stringify({ currentPassword, newPassword })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      alert("Password updated! Please log in again.");
-      onLogout();
-      
-    } catch (err) { alert(err.message); } finally { setChangingPass(false); }
+app.use(express.json({ limit: "10kb" }));
+app.use((req, res, next) => {
+  if (!req.body || typeof req.body !== "object") req.body = {};
+  next();
+});
+
+// ==================== HELPERS ====================
+
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
+function sendError(res, err) {
+  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+  if (err && err.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "This record already exists." });
+  console.error(err);
+  return res.status(500).json({ error: "Server error" });
+}
+
+async function withTransaction(fn) {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    try { await conn.rollback(); } catch (e) { /* ignore */ }
+    throw err;
+  } finally {
+    conn.release();
   }
+}
 
-  async function call(path, method = "GET", body) {
-    const options = { method, headers: { Authorization: `Bearer ${session.token}` } };
-    if (body !== undefined) { options.headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
-    
-    const res = await fetch(`${API}${path}`, options);
-    let data;
-    try { data = await res.json(); } catch { throw new Error("Invalid response."); }
-    
-    if (res.status === 401) {
-      alert("Your session has expired. Please log in again.");
-      onLogout();
-      return;
+const clean = (v) => (typeof v === "string" ? v.trim() : "");
+
+const MAX_AMOUNT = 100000;
+function parseAmount(v) {
+  if (typeof v !== "number" && typeof v !== "string") return null;
+  if (typeof v === "string" && !v.trim()) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0 || n > MAX_AMOUNT) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function parseId(v) {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function isValidDate(s) {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(s + "T00:00:00Z");
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+function isValidMonth(s) {
+  return typeof s === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+}
+
+// Today's date in the Philippines (YYYY-MM-DD), regardless of the server's timezone
+function todayManila() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+function cleanSection(v) {
+  const s = clean(v).replace(/\s+/g, " ");
+  return /^[A-Za-z0-9][A-Za-z0-9 _.\-]{1,49}$/.test(s) ? s : null;
+}
+
+const validStudentId = (v) => /^[A-Za-z0-9-]{6,30}$/.test(v);
+
+function validPassword(pw, minLen) {
+  return typeof pw === "string" && pw.length >= minLen && Buffer.byteLength(pw) <= 72;
+}
+
+function tempPassword(len = 10) {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < len; i++) out += chars[crypto.randomInt(chars.length)];
+  return out;
+}
+
+function safeEqual(a, b) {
+  const ha = crypto.createHash("sha256").update(String(a)).digest();
+  const hb = crypto.createHash("sha256").update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+async function logEvent(req, text, section) {
+  try {
+    const sec = section !== undefined ? section : (req.user ? req.user.section : null);
+    await db.query("INSERT INTO security_logs (ip_address, event_type, section) VALUES (?, ?, ?)", [req.ip, String(text).slice(0, 100), sec]);
+  } catch (err) { console.error("Log error:", err.message); }
+}
+
+// ==================== RATE LIMITERS ====================
+
+const idKey = (sid) => "id:" + String(sid).trim().toLowerCase().slice(0, 100);
+
+const studentLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => (typeof req.body.studentId === "string" && req.body.studentId.trim() ? idKey(req.body.studentId) : `ip:${req.ip}`),
+  handler: async (req, res, next, options) => {
+    const rl = req.rateLimit;
+    const firstBlock = !rl || typeof rl.current !== "number" || rl.current <= rl.limit + 1;
+    if (firstBlock) {
+      try {
+        const studentId = typeof req.body.studentId === "string" ? req.body.studentId.trim().slice(0, 40) : "Unknown";
+        const [users] = await db.query("SELECT section FROM users WHERE student_id = ?", [studentId]);
+        const section = users.length > 0 ? users[0].section : null;
+        await db.query("INSERT INTO security_logs (ip_address, event_type, section) VALUES (?, ?, ?)", [req.ip, `Blocked Login (ID: ${studentId})`.slice(0, 100), section]);
+      } catch (err) { console.error("Log error:", err.message); }
+    }
+    res.status(options.statusCode).json({ error: "Too many failed attempts. Try again in 15 minutes." });
+  },
+});
+
+const ipLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `ip:${req.ip}`,
+  message: { error: "Too many failed attempts from this network. Try again in 15 minutes." },
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `reg:${req.ip}`,
+  message: { error: "Too many registration attempts. Try again later." },
+});
+
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `uid:${req.user ? req.user.id : req.ip}`,
+  message: { error: "Too many attempts. Try again in 15 minutes." },
+});
+
+app.set("studentLoginLimiter", studentLoginLimiter);
+app.set("ipLoginLimiter", ipLoginLimiter);
+
+app.get("/", (req, res) => { res.json({ message: "Class Fund API is running" }); });
+
+// ==================== LOGIN ====================
+const FAKE_HASH = bcrypt.hashSync("not-a-real-password-x", 10);
+
+app.post("/login", ipLoginLimiter, studentLoginLimiter, async (req, res) => {
+  try {
+    const studentId = clean(req.body.studentId);
+    const password = req.body.password;
+    const loginRole = req.body.loginRole;
+    const fail = () => res.status(401).json({ error: "Invalid ID or password" });
+
+    if (!studentId || studentId.length > 40 || typeof password !== "string" || !password || password.length > 200) {
+      return res.status(400).json({ error: "Invalid ID or password" });
     }
 
-    if (!res.ok) throw new Error(data.error || "Something went wrong.");
-    return data;
+    const [rows] = await db.query("SELECT id, student_id, name, password_hash, role, section, is_default_password, token_version, is_active FROM users WHERE student_id = ?", [studentId]);
+    const user = rows[0];
+
+    const ok = await bcrypt.compare(password, user ? user.password_hash : FAKE_HASH);
+    if (!user || !user.is_active || !ok) return fail();
+    if (loginRole === "student") { if (user.role !== 0) return fail(); }
+    else if (loginRole === "admin") { if (user.role === 0) return fail(); }
+    else return fail();
+
+    const token = signToken(user);
+    res.json({ token, user: { id: user.id, name: user.name, role: user.role, section: user.section, isDefaultPassword: Boolean(user.is_default_password) } });
+  } catch (err) { sendError(res, err); }
+});
+
+// ==================== REGISTER ADMIN (invite code required) ====================
+app.post("/register-admin", registerLimiter, async (req, res) => {
+  const fail = () => res.status(400).json({ error: "Registration failed. Please check your details and try again." });
+  try {
+    const expectedCode = process.env.ADMIN_INVITE_CODE;
+    const studentId = clean(req.body.studentId);
+    const name = clean(req.body.name);
+    const password = req.body.password;
+    const section = cleanSection(req.body.section);
+    const inviteCode = req.body.inviteCode;
+
+    if (!expectedCode) return fail();
+    if (typeof inviteCode !== "string" || !safeEqual(inviteCode, expectedCode)) return fail();
+    if (!validStudentId(studentId) || !name || name.length > 100 || !section) return fail();
+    if (!validPassword(password, 8)) return fail();
+
+    const [existingId] = await db.query("SELECT id FROM users WHERE student_id = ?", [studentId]);
+    if (existingId.length > 0) return fail();
+
+    const [existingSection] = await db.query("SELECT id FROM users WHERE section = ? AND role = 1", [section]);
+    if (existingSection.length > 0) return fail();
+
+    const hash = await bcrypt.hash(password, 10);
+    await db.query("INSERT INTO users (student_id, name, password_hash, role, section, token_version, is_active, is_default_password) VALUES (?, ?, ?, 1, ?, 1, TRUE, FALSE)", [studentId, name, hash, section]);
+    await logEvent(req, `Admin Registered (ID: ${studentId})`, section);
+
+    res.json({ message: "Admin account created successfully!" });
+  } catch (err) {
+    if (err && err.code === "ER_DUP_ENTRY") return fail();
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
+});
 
-  async function loadAll(archivedExp = showArchivedExpenses) {
-    const [rep, pays, exps, studs, apps, ledg, secs] = await Promise.all([
-      call("/admin/report"), 
-      call("/admin/payments"), 
-      call(`/admin/expenses?archived=${archivedExp}`), 
-      call("/admin/students"), 
-      call("/admin/approvals"), 
-      call("/admin/ledger"), 
-      call("/admin/security-logs")
-    ]);
-    setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps); setLedger(ledg); setSecLogs(secs);
-  }
+// ============ STUDENT DEPOSIT ============
+app.post("/me/deposit", requireLogin, async (req, res) => {
+  try {
+    if (req.user.role !== 0) return res.status(403).json({ error: "Students only" });
+    const money = parseAmount(req.body.amount);
+    if (money === null) return res.status(400).json({ error: "Valid positive amount required" });
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try { await loadAll(); } catch (err) { if (active) { setMessage(err.message); setMessageType("error"); } } finally { if (active) setLoading(false); }
-    })();
-    return () => { active = false; };
-  }, [session.token]);
+    const [existing] = await db.query("SELECT id FROM deposit_requests WHERE user_id = ? AND status = 'pending'", [req.user.id]);
+    if (existing.length > 0) return res.status(400).json({ error: "You already have a pending deposit. Please wait." });
 
-  async function submit(path, body, reset, setBusy, isBusy) {
-    if (isBusy) return;
-    setMessage(""); setBusy(true);
-    try {
-      const data = await call(path, "POST", body);
-      setMessage(data.message || "Success"); setMessageType("success");
-      reset(); await loadAll();
-    } catch (err) { setMessage(err.message || "Error"); setMessageType("error"); } finally { setBusy(false); }
-  }
+    await db.query("INSERT INTO deposit_requests (user_id, amount) VALUES (?, ?)", [req.user.id, money]);
+    res.json({ message: "Deposit request submitted! Waiting for admin approval." });
+  } catch (err) { sendError(res, err); }
+});
 
-  async function removeItem(path, label) {
-    if (busyAction) return;
-    if (!window.confirm(`Delete this ${label}?`)) return;
-    setBusyAction(true); setMessage("");
-    try {
-      const data = await call(path, "DELETE");
-      setMessage(data.message || "Deleted"); setMessageType("success"); await loadAll();
-    } catch (err) { setMessage(err.message || "Error"); setMessageType("error"); } finally { setBusyAction(false); }
-  }
+// ============ ADMIN APPROVALS ============
+app.get("/admin/approvals", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(`SELECT d.id, d.amount, d.created_at, u.name, u.student_id FROM deposit_requests d JOIN users u ON u.id = d.user_id WHERE u.section = ? AND d.status = 'pending' ORDER BY d.created_at ASC`, [req.user.section]);
+    res.json(rows);
+  } catch (err) { sendError(res, err); }
+});
 
-  async function handleApproval(id, action) {
-    if (busyAction) return;
-    setBusyAction(true); setMessage("");
-    try {
-      const data = await call(`/admin/approvals/${id}/${action}`, "POST");
-      setMessage(data.message); setMessageType("success"); await loadAll();
-    } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
-  }
+app.post("/admin/approvals/:id/approve", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).json({ error: "Request not found" });
 
-  async function handleUnblock(studentId) {
-    if (busyAction) return;
-    if (!window.confirm(`Unblock student ${studentId}?`)) return;
-    setBusyAction(true); setMessage("");
-    try {
-      const data = await call("/admin/unblock-student", "POST", { studentId });
-      setMessage(data.message); setMessageType("success"); await loadAll();
-    } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
-  }
+    await withTransaction(async (conn) => {
+      const [reqs] = await conn.query(
+        `SELECT d.id, d.amount, d.user_id FROM deposit_requests d JOIN users u ON u.id = d.user_id
+         WHERE d.id = ? AND u.section = ? AND u.role = 0 AND u.is_active = TRUE AND d.status = 'pending' FOR UPDATE`,
+        [id, req.user.section]
+      );
+      if (reqs.length === 0) throw new HttpError(404, "Request not found");
+      const r = reqs[0];
+      await conn.query("INSERT INTO payments (user_id, amount, paid_date, section) VALUES (?, ?, ?, ?)", [r.user_id, r.amount, todayManila(), req.user.section]);
+      await conn.query("UPDATE deposit_requests SET status = 'approved' WHERE id = ? AND status = 'pending'", [r.id]);
+    });
 
-  async function resetStudentPassword(studentId) {
-    if (busyAction) return;
-    if (!window.confirm(`Reset password for student ${studentId}?`)) return;
-    setBusyAction(true); setMessage("");
-    try {
-      const data = await call("/admin/reset-password", "POST", { studentId });
-      setMessage(data.message); setMessageType("success");
-    } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
-  }
+    res.json({ message: "Deposit approved and added to records!" });
+  } catch (err) { sendError(res, err); }
+});
 
-  // CLEAN PAYMENTS: Only active payments show in the Deposits tab
-  const activePayments = payments.filter(p => !p.is_deleted);
-  const totalPayments = activePayments.reduce((s, p) => s + Number(p.amount), 0);
-  const paymentTotalPages = Math.ceil(activePayments.length / itemsPerPage) || 1;
-  const currentPayments = activePayments.slice((paymentPage - 1) * itemsPerPage, paymentPage * itemsPerPage);
+app.post("/admin/approvals/:id/reject", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).json({ error: "Request not found" });
+    const [result] = await db.query("UPDATE deposit_requests d JOIN users u ON u.id = d.user_id SET d.status = 'rejected' WHERE d.id = ? AND u.section = ? AND u.role = 0 AND d.status = 'pending'", [id, req.user.section]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Request not found" });
+    res.json({ message: "Deposit request rejected." });
+  } catch (err) { sendError(res, err); }
+});
 
-  const totalExpenses = expenses.reduce((s, e) => s + (e.is_deleted ? 0 : Number(e.amount)), 0);
-  const expenseTotalPages = Math.ceil(expenses.length / itemsPerPage) || 1;
-  const currentExpenses = expenses.slice((expensePage - 1) * itemsPerPage, expensePage * itemsPerPage);
+// ============ ADMIN SECURITY ============
+app.get("/admin/security-logs", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT id, ip_address, event_type, created_at FROM security_logs WHERE section = ? ORDER BY created_at DESC LIMIT 50", [req.user.section]);
+    res.json(rows);
+  } catch (err) { sendError(res, err); }
+});
 
-  const studentTotalPages = Math.ceil(students.length / itemsPerPage) || 1;
-  const currentStudents = students.slice((studentPage - 1) * itemsPerPage, studentPage * itemsPerPage);
+app.post("/admin/unblock-student", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const studentId = clean(req.body.studentId);
+    if (!studentId) return res.status(400).json({ error: "Student ID required" });
 
-  const filteredLedger = ledger.filter(item => {
-    if (showArchivedLedger && item.is_deleted !== 1) return false;
-    if (!showArchivedLedger && item.is_deleted === 1) return false;
-    if (!ledgerSearch) return true;
-    const searchLower = ledgerSearch.toLowerCase();
-    return item.description.toLowerCase().includes(searchLower) || item.type.toLowerCase().includes(searchLower);
-  });
-  const ledgerTotalPages = Math.ceil(filteredLedger.length / itemsPerPage) || 1;
-  const currentLedgerItems = filteredLedger.slice((ledgerPage - 1) * itemsPerPage, ledgerPage * itemsPerPage);
+    const [users] = await db.query("SELECT section FROM users WHERE student_id = ? AND role = 0", [studentId]);
+    if (users.length === 0 || users[0].section !== req.user.section) return res.status(403).json({ error: "Unauthorized" });
 
-  const handleTabClick = (tab) => { 
-    setActiveTab(tab); 
-    setMessage(""); 
-    setIsSidebarOpen(false); 
-    setStudentPage(1); setPaymentPage(1); setExpensePage(1); setLedgerPage(1);
-  };
+    const limiter = req.app.get("studentLoginLimiter");
+    if (limiter && limiter.resetKey) limiter.resetKey(idKey(studentId));
 
-  if (showPasswordPrompt) {
-    return (
-      <div className="student-layout">
-        <main className="container login-container">
-          <Brand />
-          <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the Super Admin. Please create a new secure password." />
-          <form className="login-form" onSubmit={handleChangePassword}>
-            <label>Current Password</label>
-            <input type="password" placeholder="Enter current password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
-            
-            <label>New Password</label>
-            <input type="password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
-            <button className="login-button" type="submit" disabled={changingPass}>{changingPass ? "Saving..." : "Save Password"}</button>
-          </form>
-        </main>
-      </div>
+    await logEvent(req, `Student Unblocked (ID: ${studentId})`);
+    res.json({ message: `Successfully unblocked student ${studentId}.` });
+  } catch (err) { sendError(res, err); }
+});
+
+// ============ LEDGER ============
+app.get("/admin/ledger", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT id, type, description, amount, date, is_deleted FROM (
+        SELECT p.id, 'Deposit' as type, CONCAT(u.name, ' (', u.student_id, ')') as description, p.amount, p.paid_date as date, p.is_deleted
+        FROM payments p JOIN users u ON u.id = p.user_id WHERE p.section = ?
+        UNION ALL
+        SELECT e.id, 'Expense' as type, e.description, e.amount, e.expense_date as date, e.is_deleted
+        FROM expenses e WHERE e.section = ?
+      ) AS ledger ORDER BY date DESC, id DESC`,
+      [req.user.section, req.user.section]
     );
-  }
+    res.json(rows);
+  } catch (err) { sendError(res, err); }
+});
 
-  return (
-    <div className="admin-layout">
-      <div className="mobile-header">
-        <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>STI COLLEGE</strong><span>{session.user.section} ADMIN</span></div></div>
-        <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
-      </div>
+// ============ STUDENTS ============
+app.post("/admin/students", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const studentId = clean(req.body.studentId);
+    const name = clean(req.body.name);
+    const password = req.body.password;
+    if (!studentId || !name || typeof password !== "string" || !password) return res.status(400).json({ error: "ID, name and password are required" });
+    if (!validStudentId(studentId)) return res.status(400).json({ error: "Student ID must be 6-30 characters (letters, numbers, hyphen)." });
+    if (name.length > 100) return res.status(400).json({ error: "Name is too long." });
+    if (!validPassword(password, 6)) return res.status(400).json({ error: "Password must be 6-72 characters." });
 
-      {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
+    const hash = await bcrypt.hash(password, 10);
 
-      <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
-        <div className="sidebar-brand">
-          <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>STI COLLEGE</strong><span>{session.user.section} ADMIN</span></div></div>
-          <button className="close-btn" onClick={() => setIsSidebarOpen(false)}>✕</button>
-        </div>
-        <nav className="sidebar-nav">
-          <button className={activeTab === "overview" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("overview")}>Overview</button>
-          
-          <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("approvals")}>
-            Approvals {approvals.length > 0 && <span className="nav-badge">{approvals.length}</span>}
-          </button>
-          
-          <button className={activeTab === "students" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("students")}>Students</button>
-          <button className={activeTab === "ledger" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("ledger")}>General Ledger</button>
-          
-          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("security")}>Security Logs</button>
-          
-          <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("deposits")}>Deposits</button>
-          <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("expenses")}>Expenses</button>
-        </nav>
-        <div className="sidebar-footer">
-          <div className="admin-info"><p className="admin-name">{session.user.name}</p><p className="admin-role">{session.user.section} Admin</p></div>
-          <button className="button-secondary logout-btn" onClick={onLogout}>Log out</button>
-        </div>
-      </aside>
-
-      <main className="admin-main">
-        {message && <Notice type={messageType}>{message}</Notice>}
-
-        {activeTab === "overview" && (
-          <div className="tab-content fade-in">
-            <div className="dashboard-banner"><div><h2>Welcome back, {session.user.name}!</h2><p>Here is the current financial overview for {session.user.section}.</p></div></div>
-            {loading ? <p className="loading-text">Loading...</p> : report && (
-              <div className="dashboard-grid">
-                <div className="color-card card-pink"><p className="stat-label">Total Collected</p><p className="stat-value">{money(report.collected)}</p><p className="stat-detail">All student contributions</p></div>
-                <div className="color-card card-blue"><p className="stat-label">Total Expenses</p><p className="stat-value">{money(report.expenses)}</p><p className="stat-detail">Funds spent this month</p></div>
-                <div className="color-card card-yellow"><p className="stat-label">Cash on Hand</p><p className="stat-value">{money(report.cashOnHand)}</p><p className="stat-detail">Available balance</p></div>
-                <div className="color-card card-purple"><p className="stat-label">Monthly Net</p><p className="stat-value">{money(report.monthNet)}</p><p className="stat-detail">Net growth this month</p></div>
-              </div>
-            )}
-            <div className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
-            
-            <div className="activity-item clickable" onClick={() => handleTabClick("deposits")}>
-              <div className="activity-info"><h4>Total Deposits Recorded</h4><p></p>
-                            <div className="activity-amount" style={{ color: "#059669" }}>{activePayments.length} Transactions</div>
-            </div>
-
-            <div className="activity-item clickable" onClick={() => handleTabClick("expenses")}>
-              <div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div>
-              <div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.filter(e => !e.is_deleted).length} Records</div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "security" && (
-          <div className="tab-content fade-in">
-            <PageHeader eyebrow="PROTECTION" title="Security Logs" description="Manage students from your section who are locked out." />
-            {secLogs.length === 0 ? (
-              <div className="empty-state"><h3>No lockouts</h3><p>All students in your section are safe.</p></div>
-            ) : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>#</th><th>Blocked ID / Info</th><th>IP Address</th><th>Date & Time</th><th className="right">Action</th></tr></thead>
-                  <tbody>
-                    {secLogs.map((log, i) => {
-                      const match = log.event_type.match(/ID:\s*([^)]+)/);
-                      const blockedId = match ? match[1].trim() : "";
-
-                      return (
-                        <tr key={log.id}>
-                          <td data-label="#">{i + 1}</td>
-                          <td data-label="Info"><span style={{ color: "#dc2626", fontWeight: "600" }}>{log.event_type}</span></td>
-                          <td data-label="IP Address" className="mono">{log.ip_address}</td>
-                          <td data-label="Date & Time">{new Date(log.created_at).toLocaleString()}</td>
-                          <td data-label="Action" className="right action-cell">
-                            {blockedId && (
-                              <button className="btn-inspect" onClick={() => handleUnblock(blockedId)} disabled={busyAction}>Unblock Student</button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "approvals" && (
-          <div className="tab-content fade-in">
-            <PageHeader eyebrow="VERIFICATION" title="Pending Approvals" description="Verify student deposit submissions." />
-            {approvals.length === 0 ? (
-              <div className="empty-state"><h3>No pending approvals</h3><p>All student deposits have been verified.</p></div>
-            ) : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead><tr><th>#</th><th>Student Name</th><th>Student ID</th><th>Amount</th><th>Date & Time</th><th className="right">Action</th></tr></thead>
-                  <tbody>
-                    {approvals.map((a, i) => (
-                      <tr key={a.id}>
-                        <td data-label="#">{i + 1}</td>
-                        <td data-label="Student Name">{a.name}</td>
-                        <td data-label="Student ID" className="mono">{a.student_id}</td>
-                        <td data-label="Amount" className="amount-green"><strong>{money(a.amount)}</strong></td>
-                        <td data-label="Date & Time">{new Date(a.created_at).toLocaleString()}</td>
-                        <td data-label="Action" className="right action-cell">
-                          <button className="btn-inspect" onClick={() => handleApproval(a.id, "approve")} disabled={busyAction} style={{ color: "#059669", borderColor: "#a7f3d0" }}>Approve</button>
-                          <button className="btn-delete" onClick={() => handleApproval(a.id, "reject")} disabled={busyAction}>Reject</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "ledger" && (
-          <div className="tab-content fade-in">
-            <PageHeader 
-              eyebrow="FINANCIAL RECORD" 
-              title={showArchivedLedger ? "Archived Ledger" : "General Ledger"} 
-              description={showArchivedLedger ? "Review all deleted transactions." : "A complete history of all active money in and out."} 
-            />
-
-            <div style={{ marginBottom: "20px", maxWidth: "400px" }}>
-              <label>Filter by Student (Name or ID)</label>
-              <input type="text" placeholder="Search by Student ID or Name..." value={ledgerSearch} onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} style={{ marginBottom: 0 }} />
-            </div>
-
-            {filteredLedger.length === 0 ? (
-              <div className="empty-state"><h3>No transactions found</h3></div>
-            ) : (
-              <>
-                <div className="table-wrap ledger-card">
-                  <table className="data-table">
-                    <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr></thead>
-                    <tbody>
-                      {currentLedgerItems.map((item, i) => (
-                        <tr key={`${item.type}-${item.id}`} style={{ opacity: item.is_deleted ? 0.6 : 1 }}>
-                          <td data-label="#">{(ledgerPage - 1) * itemsPerPage + i + 1}</td>
-                          <td data-label="Date">{new Date(item.date).toLocaleDateString()}</td>
-                          <td data-label="Type">
-                            <span className={`badge ${item.type === "Deposit" ? "badge-in" : "badge-out"}`}>
-                              {item.type}
-                            </span>
-                            {item.is_deleted === 1 && (
-                              <span className="badge" style={{ background: "#fee2e2", color: "#991b1b", marginLeft: "6px" }}>Deleted</span>
-                            )}
-                          </td>
-                          <td data-label="Description">{item.description}</td>
-                          <td data-label="Amount" className={`right ${item.type === "Deposit" ? "amount-green" : "amount-red"}`}>
-                            <strong style={{ textDecoration: item.is_deleted ? "line-through" : "none" }}>
-                              {item.type === "Deposit" ? "+" : "-"} {money(item.amount)}
-                            </strong>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginTop: "10px" }}>
-                  <button 
-                    className="button-secondary" 
-                    onClick={() => { setShowArchivedLedger(!showArchivedLedger); setLedgerPage(1); }}
-                  >
-                    {showArchivedLedger ? "← Back to Active" : "View Archived"}
-                  </button>
-                  <Pagination currentPage={ledgerPage} totalPages={ledgerTotalPages} onPageChange={setLedgerPage} />
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {activeTab === "students" && (
-          <div className="tab-content fade-in">
-            <PageHeader eyebrow="USER DIRECTORY" title={`${session.user.section} Students`} description="View and add students." />
-            
-            <div className="form-card" style={{ marginBottom: "24px" }}>
-              <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
-              <form onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }}>
-                <div><label>Student ID</label><input placeholder="e.g. 2024001" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required style={{ marginBottom: 0 }} /></div>
-                <div><label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required style={{ marginBottom: 0 }} /></div>
-                <div><label>Password</label><input type="password" placeholder="Create a strong password" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required style={{ marginBottom: 0 }} /></div>
-                <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
-              </form>
-            </div>
-
-            {students.length === 0 ? (
-              <div className="empty-state"><h3>No students found</h3></div>
-            ) : (
-              <>
-                <div className="table-wrap">
-                  <table className="data-table" style={{ minWidth: "100%" }}>
-                    <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Account Created</th><th className="right">Action</th></tr></thead>
-                    <tbody>
-                      {currentStudents.map((s, i) => (
-                        <tr key={s.id}>
-                          <td data-label="#">{(studentPage - 1) * itemsPerPage + i + 1}</td>
-                          <td data-label="ID" className="mono">{s.student_id}</td>
-                          <td data-label="Name">{s.name}</td>
-                          <td data-label="Created" style={{ color: "var(--text-muted)", fontSize: "13px" }}>{s.created_at}</td>
-                          <td data-label="Action" className="right action-cell">
-                            <button className="btn-inspect" onClick={() => resetStudentPassword(s.student_id)} disabled={busyAction}>Reset Pass</button>
-                            <button className="btn-delete" onClick={() => removeItem(`/admin/students/${s.id}`, "student")} disabled={busyAction}>Delete</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <Pagination currentPage={studentPage} totalPages={studentTotalPages} onPageChange={setStudentPage} />
-              </>
-            )}
-          </div>
-        )}
-
-        {activeTab === "deposits" && (
-          <div className="tab-content fade-in">
-            <PageHeader eyebrow="TRANSACTIONS" title="All Deposits" description="Record payments and view student contributions." />
-
-            <div className="form-card" style={{ marginBottom: "24px" }}>
-              <div className="form-card-heading"><span className="form-icon">02</span><div><h3>Record payment</h3><p>Manually record a student's contribution.</p></div></div>
-              <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }}>
-                <div className="custom-dropdown-container">
-                  <label>Student ID</label>
-                  <input placeholder="Enter or select student ID" value={payment.studentId} onChange={(e) => { setPayment({ ...payment, studentId: e.target.value.replace(/[^0-9]/g, '') }); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} required style={{ marginBottom: 0 }} />
-                  {showDropdown && students.filter(s => s.student_id.includes(payment.studentId)).length > 0 && (
-                    <ul className="custom-dropdown-list">
-                      {students.filter(s => s.student_id.includes(payment.studentId)).map(s => (
-                        <li key={s.id} onClick={() => { setPayment({ ...payment, studentId: s.student_id }); setShowDropdown(false); }} className={payment.studentId === s.student_id ? "active" : ""}>
-                          <span className="student-name">{s.name}</span>
-                          <span className="student-id">{s.student_id}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                <button type="submit" disabled={busyPayment}>{busyPayment ? "Wait..." : "Record payment"}</button>
-              </form>
-            </div>
-
-            {activePayments.length === 0 ? <div className="empty-state"><h3>No active payments</h3></div> : (
-              <>
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
-                    <tbody>{currentPayments.map((p, i) => (
-                      <tr key={p.id}>
-                        <td data-label="#">{(paymentPage - 1) * itemsPerPage + i + 1}</td>
-                        <td data-label="ID" className="mono">{p.student_id}</td>
-                        <td data-label="Name">{p.name}</td>
-                        <td data-label="Date">{p.date}</td>
-                        <td data-label="Amount" className="right amount-green">
-                          {money(p.amount)}
-                        </td>
-                        <td data-label="Action" className="right action-cell">
-                          <button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button>
-                        </td>
-                      </tr>
-                    ))}</tbody>
-                    <tfoot><tr><td colSpan="4"><strong>Total</strong></td><td className="right"><strong>{money(totalPayments)}</strong></td><td></td></tr></tfoot>
-                  </table>
-                </div>
-                <Pagination currentPage={paymentPage} totalPages={paymentTotalPages} onPageChange={setPaymentPage} />
-              </>
-            )}
-          </div>
-        )}
-
-        {activeTab === "expenses" && (
-          <div className="tab-content fade-in">
-            <PageHeader 
-              eyebrow="TRANSACTIONS" 
-              title={showArchivedExpenses ? "Archived Expenses" : "All Expenses"} 
-              description={showArchivedExpenses ? "Review deleted expense history." : "Log spending and track expenses."} 
-            />
-
-            {!showArchivedExpenses && (
-              <div className="form-card" style={{ marginBottom: "24px" }}>
-                <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
-                <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
-                  <div><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                  <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                  <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
-                </form>
-              </div>
-            )}
-
-            {expenses.length === 0 ? (
-              <div className="empty-state">
-                <h3>{showArchivedExpenses ? "No archived expenses" : "No expenses"}</h3>
-                <p>{showArchivedExpenses ? "You have no deleted records." : "Start by logging a new expense above."}</p>
-              </div>
-            ) : (
-              <>
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Description</th>
-                        <th>Date</th>
-                        <th className="right">Amount</th>
-                        {!showArchivedExpenses && <th className="right">Action</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentExpenses.map((e, i) => (
-                        <tr key={e.id} style={{ opacity: e.is_deleted ? 0.6 : 1 }}>
-                          <td data-label="#">{(expensePage - 1) * itemsPerPage + i + 1}</td>
-                          <td data-label="Description">
-                            {e.description}
-                            {e.is_deleted === 1 && <span className="badge" style={{ background: "#fee2e2", color: "#991b1b", marginLeft: "6px" }}>Deleted</span>}
-                          </td>
-                          <td data-label="Date">{e.date}</td>
-                          <td data-label="Amount" className="right amount-red" style={{ textDecoration: e.is_deleted ? "line-through" : "none" }}>
-                            {money(e.amount)}
-                          </td>
-                          {!showArchivedExpenses && (
-                            <td data-label="Action" className="right action-cell">
-                              <button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                    {!showArchivedExpenses && (
-                      <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
-                    )}
-                  </table>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginTop: "10px" }}>
-                  <button 
-                    className="button-secondary" 
-                    onClick={() => { setShowArchivedExpenses(!showArchivedExpenses); loadAll(!showArchivedExpenses); setExpensePage(1); }}
-                  >
-                    {showArchivedExpenses ? "← Back to Active" : "View Archived"}
-                  </button>
-                  <Pagination currentPage={expensePage} totalPages={expenseTotalPages} onPageChange={setExpensePage} />
-                </div>
-              </>
-            )}
-          </div>
-        )}
-        <footer className="page-footer">Class Fund Portal · {session.user.section} Admin</footer>
-      </main>
-    </div>
-  );
-}
-
-function App() {
-  const [studentId, setStudentId] = useState("");
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
-  const [section, setSection] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [session, setSession] = useState(null);
-  const [isRegistering, setIsRegistering] = useState(false);
-  
-  const [loginRole, setLoginRole] = useState("student"); 
-
-  useEffect(() => {
-    const saved = sessionStorage.getItem("classFundSession");
-    if (saved) {
-      try { setSession(JSON.parse(saved)); } catch (e) { sessionStorage.removeItem("classFundSession"); }
-    }
-  }, []);
-
-  async function handleSubmit(e) {
-    e.preventDefault(); 
-    if (loading) return; 
-    setError(""); 
-    setLoading(true);
-    
-    const endpoint = isRegistering ? "/register-admin" : "/login";
-    const body = isRegistering ? { studentId, name, password, section } : { studentId, password, loginRole };
-    
-    try {
-      const res = await fetch(`${API}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await res.json();
-      
-      if (!res.ok || data.error) { 
-        setError(data.error || "Invalid ID or password"); 
-        setLoading(false);
-        return; 
+    await withTransaction(async (conn) => {
+      const [existing] = await conn.query("SELECT id, role, section, is_active FROM users WHERE student_id = ? FOR UPDATE", [studentId]);
+      if (existing.length > 0) {
+        const u = existing[0];
+        const canReactivate = u.role === 0 && !u.is_active && u.section === req.user.section;
+        if (!canReactivate) throw new HttpError(409, "This Student ID is already registered.");
+        await conn.query("UPDATE users SET name = ?, password_hash = ?, is_default_password = TRUE, is_active = TRUE, token_version = token_version + 1 WHERE id = ?", [name, hash, u.id]);
+        return;
       }
-      
-      if (isRegistering) { 
-        setIsRegistering(false); 
-        setError("Admin created! Log in."); 
-      } else if (data.token) { 
-        sessionStorage.setItem("classFundSession", JSON.stringify(data)); 
-        setSession(data); 
-      } else {
-        setError("Invalid ID or password");
-      }
-    } catch { 
-      setError("Cannot reach server."); 
-    } finally { 
-      setLoading(false); 
-    }
-  }
+      await conn.query("INSERT INTO users (student_id, name, password_hash, role, section, token_version, is_active, is_default_password) VALUES (?, ?, ?, 0, ?, 1, TRUE, TRUE)", [studentId, name, hash, req.user.section]);
+    });
 
-  function handleLogout() {
-    sessionStorage.removeItem("classFundSession"); 
-    setSession(null); setStudentId(""); setName(""); setPassword(""); setSection(""); setError("");
-  }
+    res.json({ message: "Student added to " + req.user.section });
+  } catch (err) { sendError(res, err); }
+});
 
-  if (session && session.user.role === 2) return <SuperAdminView session={session} onLogout={handleLogout} />;
-  if (session && session.user.role === 1) return <AdminView session={session} onLogout={handleLogout} />;
-  if (session && session.user.role === 0) return <StudentView session={session} onLogout={handleLogout} />;
+app.get("/admin/students", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT id, student_id, name, DATE_FORMAT(created_at, '%Y-%m-%d %h:%i %p') AS created_at FROM users WHERE role = 0 AND section = ? AND is_active = TRUE ORDER BY name ASC", [req.user.section]);
+    res.json(rows);
+  } catch (err) { sendError(res, err); }
+});
 
-  return (
-    <div className="student-layout">
-      <main className="container login-container">
-        <Brand />
-        
-        {!isRegistering && (
-          <div className="segmented" role="tablist">
-            <button type="button" role="tab" aria-selected={loginRole === "student"} className={loginRole === "student" ? "segmented-btn active" : "segmented-btn"} onClick={() => setLoginRole("student")}>Student</button>
-            <button type="button" role="tab" aria-selected={loginRole === "admin"} className={loginRole === "admin" ? "segmented-btn active" : "segmented-btn"} onClick={() => setLoginRole("admin")}>Administrator</button>
-          </div>
-        )}
+app.delete("/admin/students/:id", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).json({ error: "Student not found" });
 
-        <Notice type={error.includes("created") ? "success" : "error"}>{error}</Notice>
-        
-        <form className="login-form" onSubmit={handleSubmit}>
-          <label>ID</label>
-          <input 
-            placeholder={isRegistering ? "Enter Admin ID" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
-            value={studentId} 
-            onChange={e => setStudentId(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} 
-            minLength={isRegistering ? 6 : undefined}
-            required 
-          />
-          
-          {isRegistering && (
-            <>
-              <label>Full Name</label>
-              <input placeholder="Enter your full name" value={name} onChange={e => setName(e.target.value.replace(/[^a-zA-Z\s]/g, ''))} required />
-              <label>Section</label><input placeholder="e.g. BSIT 1A" value={section} onChange={e => setSection(e.target.value)} required />
-            </>
-          )}
-          
-          <label>Password</label>
-          <input type="password" placeholder={isRegistering ? "Create a strong password" : "Enter your password"} value={password} onChange={e => setPassword(e.target.value)} minLength={isRegistering ? 6 : undefined} required />
-          
-          <button className="login-button" type="submit" disabled={loading}>{loading ? "Wait..." : isRegistering ? "Register" : "Sign in"}</button>
-        </form>
+    await withTransaction(async (conn) => {
+      const [rows] = await conn.query("SELECT id FROM users WHERE id = ? AND role = 0 AND section = ? AND is_active = TRUE FOR UPDATE", [id, req.user.section]);
+      if (rows.length === 0) throw new HttpError(404, "Student not found");
 
-        <div className="login-note" style={{ marginTop: '16px', textAlign: 'center' }}>
-          {isRegistering ? (
-            <button className="button-secondary" onClick={() => { setIsRegistering(false); setError(""); }} style={{ width: "100%" }}>Back</button>
-          ) : loginRole === "admin" ? (
-            <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
-              Don't have an administrator account?{" "}
-              <a href="#" onClick={(e) => { e.preventDefault(); setIsRegistering(true); setError(""); }} style={{ color: "var(--brand-accent)", fontWeight: "600", textDecoration: "none" }}>
-                Register here
-              </a>
-            </p>
-          ) : (
-            <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
-              Student access is managed by your class administrator.
-            </p>
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
+      const [[{ count }]] = await conn.query("SELECT COUNT(*) AS count FROM payments WHERE user_id = ? AND is_deleted = FALSE", [id]);
+      if (count > 0) throw new HttpError(409, "Cannot delete: this student has active payment records. Delete the payments first if you want to remove the student.");
 
-export default App;
+      await conn.query("UPDATE deposit_requests SET status = 'rejected' WHERE user_id = ? AND status = 'pending'", [id]);
+      await conn.query("UPDATE users SET is_active = FALSE, token_version = token_version + 1 WHERE id = ? AND section = ?", [id, req.user.section]);
+    });
+
+    await logEvent(req, `Student Deleted (user #${id})`);
+    res.json({ message: "Student deleted successfully" });
+  } catch (err) { sendError(res, err); }
+});
+
+app.post("/admin/reset-password", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const studentId = clean(req.body.studentId);
+    if (!studentId) return res.status(400).json({ error: "Student ID required" });
+
+    const [rows] = await db.query("SELECT id, name FROM users WHERE student_id = ? AND role = 0 AND section = ? AND is_active = TRUE", [studentId, req.user.section]);
+    if (rows.length === 0) return res.status(404).json({ error: "Student not found" });
+
+    const temp = tempPassword();
+    const hash = await bcrypt.hash(temp, 10);
+    await db.query("UPDATE users SET password_hash = ?, is_default_password = TRUE, token_version = token_version + 1 WHERE id = ?", [hash, rows[0].id]);
+
+    await logEvent(req, `Password Reset (Student ID: ${studentId})`);
+    res.json({ message: `Password for ${rows[0].name} was reset. Temporary password: ${temp} (give it to the student, they must change it at next login).` });
+  } catch (err) { sendError(res, err); }
+});
+
+// ============ PAYMENTS ============
+app.post("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const studentId = clean(req.body.studentId);
+    const money = parseAmount(req.body.amount);
+    const date = req.body.date ? String(req.body.date) : todayManila();
+    if (!studentId || money === null) return res.status(400).json({ error: "Student ID and valid positive amount required" });
+    if (!isValidDate(date) || date > todayManila()) return res.status(400).json({ error: "Invalid date." });
+
+    const name = await withTransaction(async (conn) => {
+      const [rows] = await conn.query("SELECT id, name FROM users WHERE student_id = ? AND role = 0 AND section = ? AND is_active = TRUE FOR UPDATE", [studentId, req.user.section]);
+      if (rows.length === 0) throw new HttpError(404, "Student not found");
+      await conn.query("INSERT INTO payments (user_id, amount, paid_date, section) VALUES (?, ?, ?, ?)", [rows[0].id, money, date, req.user.section]);
+      return rows[0].name;
+    });
+
+    res.json({ message: "Payment recorded for " + name });
+  } catch (err) { sendError(res, err); }
+});
+
+app.get("/admin/payments", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT p.id, p.amount, DATE_FORMAT(p.paid_date, '%Y-%m-%d %h:%i %p') AS date, u.student_id, u.name, p.is_deleted FROM payments p JOIN users u ON u.id = p.user_id WHERE p.section = ? ORDER BY p.paid_date DESC, p.id DESC", [req.user.section]);
+    res.json(rows);
+  } catch (err) { sendError(res, err); }
+});
+
+app.delete("/admin/payments/:id", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).json({ error: "Payment not found" });
+    const [result] = await db.query("UPDATE payments SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND section = ? AND is_deleted = FALSE", [req.user.id, id, req.user.section]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Payment not found" });
+    await logEvent(req, `Payment Deleted (#${id})`);
+    res.json({ message: "Payment removed from active list. Audit trail preserved." });
+  } catch (err) { sendError(res, err); }
+});
+
+// ============ EXPENSES ============
+app.post("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const description = clean(req.body.description);
+    const money = parseAmount(req.body.amount);
+    const date = req.body.date ? String(req.body.date) : todayManila();
+    if (!description || description.length > 200 || money === null) return res.status(400).json({ error: "Description (max 200 characters) and valid positive amount required" });
+    if (!isValidDate(date) || date > todayManila()) return res.status(400).json({ error: "Invalid date." });
+
+    await db.query("INSERT INTO expenses (description, amount, expense_date, section) VALUES (?, ?, ?, ?)", [description, money, date, req.user.section]);
+    res.json({ message: "Expense logged: " + description });
+  } catch (err) { sendError(res, err); }
+});
+
+app.get("/admin/expenses", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const showArchived = req.query.archived === "true";
+    const query = showArchived
+      ? "SELECT id, description, amount, DATE_FORMAT(expense_date, '%Y-%m-%d') AS date, is_deleted FROM expenses WHERE section = ? AND is_deleted = TRUE ORDER BY expense_date DESC, id DESC"
+      : "SELECT id, description, amount, DATE_FORMAT(expense_date, '%Y-%m-%d') AS date, is_deleted FROM expenses WHERE section = ? AND is_deleted = FALSE ORDER BY expense_date DESC, id DESC";
+    const [rows] = await db.query(query, [req.user.section]);
+    res.json(rows);
+  } catch (err) { sendError(res, err); }
+});
+
+app.delete("/admin/expenses/:id", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).json({ error: "Expense not found" });
+    const [result] = await db.query("UPDATE expenses SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND section = ? AND is_deleted = FALSE", [req.user.id, id, req.user.section]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Expense not found" });
+    await logEvent(req, `Expense Deleted (#${id})`);
+    res.json({ message: "Expense removed from active list. Audit trail preserved." });
+  } catch (err) { sendError(res, err); }
+});
+
+// ============ SUMMARY & REPORT ============
+app.get("/me/summary", requireLogin, async (req, res) => {
+  try {
+    const [payments] = await db.query("SELECT id, amount, DATE_FORMAT(paid_date, '%Y-%m-%d') AS date FROM payments WHERE user_id = ? AND is_deleted = FALSE ORDER BY paid_date DESC, id DESC", [req.user.id]);
+    const paid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
+    res.json({ paid, totalClassFund: Number(allC.total) - Number(allE.total), payments });
+  } catch (err) { sendError(res, err); }
+});
+
+app.post("/me/change-password", requireLogin, changePasswordLimiter, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (typeof currentPassword !== "string" || !currentPassword) return res.status(400).json({ error: "Current password is required" });
+
+    const minLen = req.user.role === 0 ? 6 : 8;
+    if (!validPassword(newPassword, minLen)) return res.status(400).json({ error: `New password must be ${minLen}-72 characters` });
+    if (newPassword === currentPassword) return res.status(400).json({ error: "New password must differ from current" });
+
+    const [rows] = await db.query("SELECT password_hash FROM users WHERE id = ?", [req.user.id]);
+    const ok = rows[0] && (await bcrypt.compare(currentPassword, rows[0].password_hash));
+    if (!ok) return res.status(400).json({ error: "Current password is incorrect" });
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.query("UPDATE users SET password_hash = ?, is_default_password = FALSE, token_version = token_version + 1 WHERE id = ?", [hash, req.user.id]);
+    res.json({ message: "Password updated successfully!" });
+  } catch (err) { sendError(res, err); }
+});
+
+app.get("/admin/report", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const month = req.query.month || todayManila().slice(0, 7);
+    if (!isValidMonth(month)) return res.status(400).json({ error: "Month must look like 2026-10" });
+    const start = month + "-01";
+    const [[c]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND paid_date >= ? AND paid_date < DATE_ADD(?, INTERVAL 1 MONTH) AND is_deleted = FALSE", [req.user.section, start, start]);
+    const [[e]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND expense_date >= ? AND expense_date < DATE_ADD(?, INTERVAL 1 MONTH) AND is_deleted = FALSE", [req.user.section, start, start]);
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND is_deleted = FALSE", [req.user.section]);
+    res.json({ month, collected: Number(c.total), expenses: Number(e.total), monthNet: Number(c.total) - Number(e.total), cashOnHand: Number(allC.total) - Number(allE.total) });
+  } catch (err) { sendError(res, err); }
+});
+
+// ============ SUPER ADMIN ============
+app.get("/super-admin/admins", requireLogin, requireSuperAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT id, student_id, name, section FROM users WHERE role = 1 ORDER BY section ASC");
+    res.json(rows);
+  } catch (err) { sendError(res, err); }
+});
+
+app.get("/super-admin/sections/:sectionName", requireLogin, requireSuperAdmin, async (req, res) => {
+  try {
+    const section = clean(req.params.sectionName);
+    if (!section) return res.status(400).json({ error: "Section required" });
+    const [students] = await db.query("SELECT id, student_id, name FROM users WHERE role = 0 AND section = ? AND is_active = TRUE ORDER BY name ASC", [section]);
+    const [[allC]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE section = ? AND is_deleted = FALSE", [section]);
+    const [[allE]] = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE section = ? AND is_deleted = FALSE", [section]);
+    res.json({ students, cashOnHand: Number(allC.total) - Number(allE.total) });
+  } catch (err) { sendError(res, err); }
+});
+
+app.delete("/super-admin/sections/:sectionName", requireLogin, requireSuperAdmin, async (req, res) => {
+  try {
+    const section = clean(req.params.sectionName);
+    if (!section) return res.status(400).json({ error: "Section required" });
+
+    await withTransaction(async (conn) => {
+      const [protectedUsers] = await conn.query("SELECT id FROM users WHERE section = ? AND role = 2", [section]);
+      if (protectedUsers.length > 0) throw new HttpError(400, "This section contains a Super Admin account and cannot be deleted.");
+
+      await conn.query("DELETE d FROM deposit_requests d JOIN users u ON u.id = d.user_id WHERE u.section = ?", [section]);
+      await conn.query("DELETE FROM payments WHERE section = ?", [section]);
+      await conn.query("DELETE FROM expenses WHERE section = ?", [section]);
+      await conn.query("DELETE FROM users WHERE section = ? AND role <> 2", [section]);
+    });
+
+    await logEvent(req, `Section Deleted: ${section}`, null);
+    res.json({ message: `Successfully deleted the entire ${section} section.` });
+  } catch (err) { sendError(res, err); }
+});
+
+app.post("/super-admin/reset-limits", requireLogin, requireSuperAdmin, async (req, res) => {
+  try {
+    const ipLimiter = req.app.get("ipLoginLimiter");
+    if (ipLimiter && ipLimiter.resetKey) ipLimiter.resetKey(`ip:${req.ip}`);
+    res.json({ message: "Successfully unblocked your IP address." });
+  } catch (err) { sendError(res, err); }
+});
+
+app.get("/super-admin/logs", requireLogin, requireSuperAdmin, async (req, res) => {
+  try {
+    const [logs] = await db.query("SELECT id, ip_address, event_type, created_at FROM security_logs ORDER BY created_at DESC LIMIT 50");
+    res.json(logs);
+  } catch (err) { sendError(res, err); }
+});
+
+app.post("/super-admin/reset-admin-password", requireLogin, requireSuperAdmin, async (req, res) => {
+  try {
+    const adminId = clean(req.body.adminId);
+    if (!adminId) return res.status(400).json({ error: "Admin ID required" });
+
+    const [rows] = await db.query("SELECT id, name FROM users WHERE student_id = ? AND role = 1", [adminId]);
+    if (rows.length === 0) return res.status(404).json({ error: "Admin not found" });
+
+    const temp = tempPassword();
+    const hash = await bcrypt.hash(temp, 10);
+    await db.query("UPDATE users SET password_hash = ?, is_default_password = TRUE, token_version = token_version + 1 WHERE id = ?", [hash, rows[0].id]);
+
+    await logEvent(req, `Admin Password Reset (ID: ${adminId})`, null);
+    res.json({ message: `Successfully reset the password for Admin ${rows[0].name}. Temporary password: ${temp} (they must change it at next login).` });
+  } catch (err) { sendError(res, err); }
+});
+
+// ==================== FALLBACKS ====================
+app.use((req, res) => { res.status(404).json({ error: "Not found" }); });
+
+app.use((err, req, res, next) => {
+  if (err && err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON" });
+  if (err && err.type === "entity.too.large") return res.status(413).json({ error: "Request too large" });
+  console.error(err);
+  res.status(500).json({ error: "Server error" });
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => { console.log("Server running at http://localhost:" + PORT); });

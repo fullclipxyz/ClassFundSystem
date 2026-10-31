@@ -1,7 +1,17 @@
 const jwt = require("jsonwebtoken");
 const db = require("./db");
 
-const PASSWORD_RESET_ALLOWED_PATHS = new Set(["/me/change-password"]);
+const JWT_ISSUER = "classfund-api";
+const JWT_AUDIENCE = "classfund-app";
+const PASSWORD_RESET_ALLOWED = new Set(["POST /me/change-password"]);
+
+function signToken(user) {
+  return jwt.sign(
+    { id: user.id, role: user.role, tv: user.token_version },
+    process.env.JWT_SECRET,
+    { algorithm: "HS256", expiresIn: "2h", issuer: JWT_ISSUER, audience: JWT_AUDIENCE }
+  );
+}
 
 async function requireLogin(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -9,13 +19,18 @@ async function requireLogin(req, res, next) {
     return res.status(401).json({ error: "No token provided" });
   }
 
-  const token = authHeader.slice(7);
   let decoded;
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET, {
+    decoded = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET, {
       algorithms: ["HS256"],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
     });
   } catch {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  if (!Number.isInteger(decoded.id) || !Number.isInteger(decoded.tv)) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 
@@ -25,12 +40,12 @@ async function requireLogin(req, res, next) {
       [decoded.id]
     );
     const u = rows[0];
-    
+
     if (!u || !u.is_active || u.token_version !== decoded.tv) {
       return res.status(401).json({ error: "Session expired. Please sign in again." });
     }
 
-    if (u.is_default_password === 1 && !PASSWORD_RESET_ALLOWED_PATHS.has(req.path)) {
+    if (u.is_default_password && !PASSWORD_RESET_ALLOWED.has(`${req.method} ${req.path}`)) {
       return res.status(403).json({
         error: "You must change your password before continuing.",
         code: "PASSWORD_RESET_REQUIRED",
@@ -46,7 +61,7 @@ async function requireLogin(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (req.user.role !== 1 && req.user.role !== 2) {
+  if (req.user.role !== 1 || !req.user.section) {
     return res.status(403).json({ error: "Admin access required" });
   }
   next();
@@ -59,4 +74,4 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireLogin, requireAdmin, requireSuperAdmin };
+module.exports = { requireLogin, requireAdmin, requireSuperAdmin, signToken };
