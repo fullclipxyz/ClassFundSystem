@@ -967,7 +967,6 @@ function App() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [section, setSection] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState(null);
@@ -989,7 +988,7 @@ function App() {
     setLoading(true);
     
     const endpoint = isRegistering ? "/register-admin" : "/login";
-    const body = isRegistering ? { studentId, name, password, section, inviteCode } : { studentId, password, loginRole };
+    const body = isRegistering ? { studentId, name, password, section } : { studentId, password, loginRole };
     
     try {
       const res = await fetch(`${API}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1055,8 +1054,6 @@ function App() {
               <label>Full Name</label>
               <input placeholder="Enter your full name" value={name} onChange={e => setName(e.target.value.replace(/[^a-zA-Z\s]/g, ''))} required />
               <label>Section</label><input placeholder="e.g. BSIT 1A" value={section} onChange={e => setSection(e.target.value)} required />
-              <label>Invite Code</label>
-              <input type="password" placeholder="Code from the Super Admin" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required />
             </>
           )}
           

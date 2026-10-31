@@ -107,12 +107,6 @@ function tempPassword(len = 10) {
   return out;
 }
 
-function safeEqual(a, b) {
-  const ha = crypto.createHash("sha256").update(String(a)).digest();
-  const hb = crypto.createHash("sha256").update(String(b)).digest();
-  return crypto.timingSafeEqual(ha, hb);
-}
-
 async function logEvent(req, text, section) {
   try {
     const sec = section !== undefined ? section : (req.user ? req.user.section : null);
@@ -200,19 +194,15 @@ app.post("/login", ipLoginLimiter, studentLoginLimiter, async (req, res) => {
   } catch (err) { sendError(res, err); }
 });
 
-// ==================== REGISTER ADMIN (invite code required) ====================
+// ==================== REGISTER ADMIN (Invite code removed) ====================
 app.post("/register-admin", registerLimiter, async (req, res) => {
   const fail = () => res.status(400).json({ error: "Registration failed. Please check your details and try again." });
   try {
-    const expectedCode = process.env.ADMIN_INVITE_CODE;
     const studentId = clean(req.body.studentId);
     const name = clean(req.body.name);
     const password = req.body.password;
     const section = cleanSection(req.body.section);
-    const inviteCode = req.body.inviteCode;
 
-    if (!expectedCode) return fail();
-    if (typeof inviteCode !== "string" || !safeEqual(inviteCode, expectedCode)) return fail();
     if (!validStudentId(studentId) || !name || name.length > 100 || !section) return fail();
     if (!validPassword(password, 8)) return fail();
 
@@ -581,6 +571,7 @@ app.post("/super-admin/reset-admin-password", requireLogin, requireSuperAdmin, a
 
     const [rows] = await db.query("SELECT id, name FROM users WHERE student_id = ? AND role = 1", [adminId]);
     if (rows.length === 0) return res.status(404).json({ error: "Admin not found" });
+    found" });
 
     const temp = tempPassword();
     const hash = await bcrypt.hash(temp, 10);
