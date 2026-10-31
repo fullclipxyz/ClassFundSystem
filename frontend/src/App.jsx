@@ -96,8 +96,10 @@ function StudentView({ session, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      
       alert("Password updated! Please log in again.");
       onLogout();
+      
     } catch (err) { alert(err.message); } finally { setChangingPass(false); }
   }
 
@@ -126,6 +128,7 @@ function StudentView({ session, onLogout }) {
           <form className="login-form" onSubmit={handleChangePassword}>
             <label>Current Password</label>
             <input type="password" placeholder="Enter current password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+            
             <label>New Password</label>
             <input type="password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
             <button className="login-button" type="submit" disabled={changingPass}>{changingPass ? "Saving..." : "Save Password"}</button>
@@ -194,7 +197,6 @@ function StudentView({ session, onLogout }) {
     </div>
   );
 }
-
 function SuperAdminView({ session, onLogout }) {
   const [activeTab, setActiveTab] = useState("sections");
   const [admins, setAdmins] = useState([]);
@@ -376,7 +378,6 @@ function SuperAdminView({ session, onLogout }) {
     </div>
   );
 }
-
 function AdminView({ session, onLogout }) {
   const [report, setReport] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -429,29 +430,40 @@ function AdminView({ session, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      
       alert("Password updated! Please log in again.");
       onLogout();
+      
     } catch (err) { alert(err.message); } finally { setChangingPass(false); }
   }
 
   async function call(path, method = "GET", body) {
     const options = { method, headers: { Authorization: `Bearer ${session.token}` } };
     if (body !== undefined) { options.headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
+    
     const res = await fetch(`${API}${path}`, options);
     let data;
     try { data = await res.json(); } catch { throw new Error("Invalid response."); }
+    
     if (res.status === 401) {
       alert("Your session has expired. Please log in again.");
       onLogout();
       return;
     }
+
     if (!res.ok) throw new Error(data.error || "Something went wrong.");
     return data;
   }
 
   async function loadAll(archivedExp = showArchivedExpenses) {
     const [rep, pays, exps, studs, apps, ledg, secs] = await Promise.all([
-      call("/admin/report"), call("/admin/payments"), call(`/admin/expenses?archived=${archivedExp}`), call("/admin/students"), call("/admin/approvals"), call("/admin/ledger"), call("/admin/security-logs")
+      call("/admin/report"), 
+      call("/admin/payments"), 
+      call(`/admin/expenses?archived=${archivedExp}`), 
+      call("/admin/students"), 
+      call("/admin/approvals"), 
+      call("/admin/ledger"), 
+      call("/admin/security-logs")
     ]);
     setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps); setLedger(ledg); setSecLogs(secs);
   }
@@ -513,17 +525,17 @@ function AdminView({ session, onLogout }) {
     } catch (err) { setMessage(err.message); setMessageType("error"); } finally { setBusyAction(false); }
   }
 
-  const totalPayments = payments.reduce((s, p) => s + (p.is_deleted ? 0 : Number(p.amount)), 0);
+  const activePayments = payments.filter(p => !p.is_deleted);
+  const totalPayments = activePayments.reduce((s, p) => s + Number(p.amount), 0);
+  const paymentTotalPages = Math.ceil(activePayments.length / itemsPerPage) || 1;
+  const currentPayments = activePayments.slice((paymentPage - 1) * itemsPerPage, paymentPage * itemsPerPage);
+
   const totalExpenses = expenses.reduce((s, e) => s + (e.is_deleted ? 0 : Number(e.amount)), 0);
+  const expenseTotalPages = Math.ceil(expenses.length / itemsPerPage) || 1;
+  const currentExpenses = expenses.slice((expensePage - 1) * itemsPerPage, expensePage * itemsPerPage);
 
   const studentTotalPages = Math.ceil(students.length / itemsPerPage) || 1;
   const currentStudents = students.slice((studentPage - 1) * itemsPerPage, studentPage * itemsPerPage);
-
-  const paymentTotalPages = Math.ceil(payments.length / itemsPerPage) || 1;
-  const currentPayments = payments.slice((paymentPage - 1) * itemsPerPage, paymentPage * itemsPerPage);
-
-  const expenseTotalPages = Math.ceil(expenses.length / itemsPerPage) || 1;
-  const currentExpenses = expenses.slice((expensePage - 1) * itemsPerPage, expensePage * itemsPerPage);
 
   const filteredLedger = ledger.filter(item => {
     if (showArchivedLedger && item.is_deleted !== 1) return false;
@@ -536,7 +548,10 @@ function AdminView({ session, onLogout }) {
   const currentLedgerItems = filteredLedger.slice((ledgerPage - 1) * itemsPerPage, ledgerPage * itemsPerPage);
 
   const handleTabClick = (tab) => { 
-    setActiveTab(tab); setMessage(""); setIsSidebarOpen(false); setStudentPage(1); setPaymentPage(1); setExpensePage(1); setLedgerPage(1);
+    setActiveTab(tab); 
+    setMessage(""); 
+    setIsSidebarOpen(false); 
+    setStudentPage(1); setPaymentPage(1); setExpensePage(1); setLedgerPage(1);
   };
 
   if (showPasswordPrompt) {
@@ -548,6 +563,7 @@ function AdminView({ session, onLogout }) {
           <form className="login-form" onSubmit={handleChangePassword}>
             <label>Current Password</label>
             <input type="password" placeholder="Enter current password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+            
             <label>New Password</label>
             <input type="password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
             <button className="login-button" type="submit" disabled={changingPass}>{changingPass ? "Saving..." : "Save Password"}</button>
@@ -573,10 +589,16 @@ function AdminView({ session, onLogout }) {
         </div>
         <nav className="sidebar-nav">
           <button className={activeTab === "overview" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("overview")}>Overview</button>
-          <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("approvals")}>Approvals {approvals.length > 0 && <span className="nav-badge">{approvals.length}</span>}</button>
+          
+          <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("approvals")}>
+            Approvals {approvals.length > 0 && <span className="nav-badge">{approvals.length}</span>}
+          </button>
+          
           <button className={activeTab === "students" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("students")}>Students</button>
           <button className={activeTab === "ledger" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("ledger")}>General Ledger</button>
+          
           <button className={activeTab === "security" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("security")}>Security Logs</button>
+          
           <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("deposits")}>Deposits</button>
           <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("expenses")}>Expenses</button>
         </nav>
@@ -600,16 +622,17 @@ function AdminView({ session, onLogout }) {
                 <div className="color-card card-purple"><p className="stat-label">Monthly Net</p><p className="stat-value">{money(report.monthNet)}</p><p className="stat-detail">Net growth this month</p></div>
               </div>
             )}
-            <div className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
+            <div
+             className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
+            
             <div className="activity-item clickable" onClick={() => handleTabClick("deposits")}>
               <div className="activity-info"><h4>Total Deposits Recorded</h4><p>All payments saved in the database</p></div>
-              <div
-               className="activity-amount" style={{ color: "#059669" }}>{payments.length} Transactions</div>
+              <div className="activity-amount" style={{ color: "#059669" }}>{activePayments.length} Transactions</div>
             </div>
 
             <div className="activity-item clickable" onClick={() => handleTabClick("expenses")}>
               <div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div>
-              <div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.length} Records</div>
+              <div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.filter(e => !e.is_deleted).length} Records</div>
             </div>
           </div>
         )}
@@ -807,27 +830,22 @@ function AdminView({ session, onLogout }) {
               </form>
             </div>
 
-            {payments.length === 0 ? <div className="empty-state"><h3>No payments</h3></div> : (
+            {activePayments.length === 0 ? <div className="empty-state"><h3>No active payments</h3></div> : (
               <>
                 <div className="table-wrap">
                   <table className="data-table">
                     <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
                     <tbody>{currentPayments.map((p, i) => (
-                      <tr key={p.id} style={{ opacity: p.is_deleted ? 0.6 : 1 }}>
+                      <tr key={p.id}>
                         <td data-label="#">{(paymentPage - 1) * itemsPerPage + i + 1}</td>
                         <td data-label="ID" className="mono">{p.student_id}</td>
-                        <td data-label="Name">
-                          {p.name}
-                          {p.is_deleted === 1 && <span className="badge" style={{ background: "#fee2e2", color: "#991b1b", marginLeft: "6px" }}>Deleted</span>}
-                        </td>
+                        <td data-label="Name">{p.name}</td>
                         <td data-label="Date">{p.date}</td>
-                        <td data-label="Amount" className="right amount-green" style={{ textDecoration: p.is_deleted ? "line-through" : "none" }}>
+                        <td data-label="Amount" className="right amount-green">
                           {money(p.amount)}
                         </td>
                         <td data-label="Action" className="right action-cell">
-                          {!p.is_deleted && (
-                            <button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button>
-                          )}
+                          <button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button>
                         </td>
                       </tr>
                     ))}</tbody>
