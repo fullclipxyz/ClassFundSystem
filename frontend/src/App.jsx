@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import "./App.css";
-import { LegalLinks } from "./Legal";
 
-const API = "https://classfundsystem.onrender.com";
+const API = "https://classfundsystem.onrender.com"; 
 
 function money(value) {
   const amount = Number(value ?? 0);
@@ -33,10 +32,9 @@ function PageHeader({ eyebrow, title, description, action }) {
 
 function Notice({ children, type = "info" }) {
   if (!children) return null;
-  return <div className={`notice notice-${type}`} role={type === "error" ? "alert" : "status"}>{children}</div>;
+  return <div className={`notice notice-${type}`} role="status">{children}</div>;
 }
 
-/* ==================== PAGINATION COMPONENT ==================== */
 function Pagination({ currentPage, totalPages, onPageChange }) {
   return (
     <nav className="pagination-container" aria-label="Pagination">
@@ -45,7 +43,7 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
       </button>
       <div className="pagination-numbers">
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-          <button type="button" key={n} className={`page-num ${currentPage === n ? "active" : ""}`} aria-label={`Page ${n}`} aria-current={currentPage === n ? "page" : undefined} onClick={() => onPageChange(n)}>
+          <button type="button" key={n} className={`page-num ${currentPage === n ? "active" : ""}`} onClick={() => onPageChange(n)}>
             {n}
           </button>
         ))}
@@ -58,12 +56,11 @@ function Pagination({ currentPage, totalPages, onPageChange }) {
   );
 }
 
-/* ==================== STUDENT VIEW ==================== */
 function StudentView({ session, onLogout }) {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-
+  
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(session.user.isDefaultPassword);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -99,9 +96,10 @@ function StudentView({ session, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-
+      
       alert("Password updated! Please log in again.");
       onLogout();
+      
     } catch (err) { alert(err.message); } finally { setChangingPass(false); }
   }
 
@@ -128,11 +126,11 @@ function StudentView({ session, onLogout }) {
           <Brand />
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the admin. Please create a new secure password." />
           <form className="login-form" onSubmit={handleChangePassword}>
-            <label htmlFor="student-current-password">Current Password</label>
-            <input id="student-current-password" type="password" autoComplete="current-password" placeholder="Enter current password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
-
-            <label htmlFor="student-new-password">New Password</label>
-            <input id="student-new-password" type="password" autoComplete="new-password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+            <label>Current Password</label>
+            <input type="password" placeholder="Enter current password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+            
+            <label>New Password</label>
+            <input type="password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
             <button className="login-button" type="submit" disabled={changingPass}>{changingPass ? "Saving..." : "Save Password"}</button>
           </form>
         </main>
@@ -147,7 +145,7 @@ function StudentView({ session, onLogout }) {
         <PageHeader eyebrow={`${session.user.section || "STUDENT"} PORTAL`} title={`Hi, ${session.user.name}`} description="Here's an overview of the class fund." action={<button className="button-secondary logout-btn-top" onClick={onLogout}>Log out</button>} />
         {loading && <p className="loading-text">Loading your account...</p>}
         <Notice type="error">{error}</Notice>
-
+        
         {summary && !loading && (
           <>
             <div className="dashboard-grid">
@@ -158,16 +156,16 @@ function StudentView({ session, onLogout }) {
             <section className="content-section" style={{ marginBottom: "32px" }}>
               <div className="form-card">
                 <div className="form-card-heading">
-                  <span className="form-icon" style={{ background: "#ecfdf5", color: "#047857" }} aria-hidden="true">₱</span>
+                  <span className="form-icon" style={{ background: "#ecfdf5", color: "#059669" }}>₱</span>
                   <div><h3>Submit a Deposit</h3><p>Send money to the class fund. Admin will verify it.</p></div>
                 </div>
                 {depositMessage && <Notice type={depositMessage.includes("submitted") ? "success" : "error"}>{depositMessage}</Notice>}
                 <form onSubmit={handleDeposit}>
                   <div>
-                    <label htmlFor="deposit-amount">Amount (PHP)</label>
-                    <input id="deposit-amount" type="number" inputMode="decimal" min="1" step="0.01" placeholder="0.00" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} required style={{ marginBottom: 0 }} />
+                    <label>Amount (PHP)</label>
+                    <input type="number" min="1" step="0.01" placeholder="0.00" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} required style={{ marginBottom: 0 }} />
                   </div>
-                  <button type="submit" disabled={depositLoading} style={{ background: "#047857", borderColor: "#047857" }}>{depositLoading ? "Submitting..." : "Submit Deposit"}</button>
+                  <button type="submit" disabled={depositLoading} style={{ background: "#059669", borderColor: "#059669" }}>{depositLoading ? "Submitting..." : "Submit Deposit"}</button>
                 </form>
               </div>
             </section>
@@ -175,11 +173,11 @@ function StudentView({ session, onLogout }) {
             <section className="content-section">
               <div className="section-heading"><div><h2>My Contributions</h2><p>Review your recorded payments.</p></div><span className="count-badge">{summary.payments.length} records</span></div>
               {summary.payments.length === 0 ? (
-                <div className="empty-state"><div className="empty-icon" aria-hidden="true">₱</div><h3>No payments yet</h3></div>
+                <div className="empty-state"><div className="empty-icon">₱</div><h3>No payments yet</h3></div>
               ) : (
                 <div className="table-wrap">
                   <table className="data-table">
-                    <thead><tr><th scope="col">#</th><th scope="col">Date</th><th scope="col" className="right">Amount</th></tr></thead>
+                    <thead><tr><th>#</th><th>Date</th><th className="right">Amount</th></tr></thead>
                     <tbody>{summary.payments.map((payment, index) => (
                       <tr key={payment.id ?? index}>
                         <td data-label="#">{index + 1}</td>
@@ -194,13 +192,12 @@ function StudentView({ session, onLogout }) {
             </section>
           </>
         )}
-        <footer className="page-footer">Class Fund Portal · {session.user.section || "Student Account"} · <LegalLinks /></footer>
+        <footer className="page-footer">Class Fund Portal · {session.user.section || "Student Account"}</footer>
       </main>
     </div>
   );
 }
 
-/* ==================== SUPER ADMIN VIEW ==================== */
 function SuperAdminView({ session, onLogout }) {
   const [activeTab, setActiveTab] = useState("sections");
   const [admins, setAdmins] = useState([]);
@@ -211,23 +208,12 @@ function SuperAdminView({ session, onLogout }) {
   const [showLogs, setShowLogs] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } })
-      .then(res => (res.ok ? res.json() : Promise.reject(new Error("Could not load admins."))))
-      .then(data => setAdmins(Array.isArray(data) ? data : []))
-      .catch(err => setMessage(err.message || "Could not load admins."));
-  }, [session.token]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") { setShowLogs(false); setInspectData(null); setIsSidebarOpen(false); } };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useEffect(() => { fetch(`${API}/super-admin/admins`, { headers: { Authorization: `Bearer ${session.token}` } }).then(res => res.json()).then(data => setAdmins(data)); }, [session.token]);
 
   const deleteSection = async (section) => {
     if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete the ENTIRE ${section} section?`)) return;
     try {
-      const res = await fetch(`${API}/super-admin/sections/${encodeURIComponent(section)}`, { method: "DELETE", headers: { Authorization: `Bearer ${session.token}` } });
+      const res = await fetch(`${API}/super-admin/sections/${section}`, { method: "DELETE", headers: { Authorization: `Bearer ${session.token}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setMessage(data.message); setAdmins(admins.filter(a => a.section !== section));
@@ -236,7 +222,7 @@ function SuperAdminView({ session, onLogout }) {
 
   const inspectSection = async (section) => {
     try {
-      const res = await fetch(`${API}/super-admin/sections/${encodeURIComponent(section)}`, { headers: { Authorization: `Bearer ${session.token}` } });
+      const res = await fetch(`${API}/super-admin/sections/${section}`, { headers: { Authorization: `Bearer ${session.token}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setInspectData({ section, ...data });
@@ -279,7 +265,7 @@ function SuperAdminView({ session, onLogout }) {
     <div className="admin-layout">
       <div className="mobile-header">
         <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>SUPER ADMIN</strong><span>MASTER CONTROL</span></div></div>
-        <button className="menu-btn" aria-label="Open menu" aria-expanded={isSidebarOpen} onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
+        <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
       </div>
 
       {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
@@ -287,11 +273,11 @@ function SuperAdminView({ session, onLogout }) {
       <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
         <div className="sidebar-brand">
           <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>SUPER ADMIN</strong><span>MASTER CONTROL</span></div></div>
-          <button className="close-btn" aria-label="Close menu" onClick={() => setIsSidebarOpen(false)}>✕</button>
+          <button className="close-btn" onClick={() => setIsSidebarOpen(false)}>✕</button>
         </div>
-        <nav className="sidebar-nav" aria-label="Main menu">
-          <button className={activeTab === "sections" ? "nav-item active" : "nav-item"} aria-current={activeTab === "sections" ? "page" : undefined} onClick={() => handleTabClick("sections")}>All Sections</button>
-          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} aria-current={activeTab === "security" ? "page" : undefined} onClick={() => handleTabClick("security")}>Security</button>
+        <nav className="sidebar-nav">
+          <button className={activeTab === "sections" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("sections")}>All Sections</button>
+          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("security")}>Security</button>
         </nav>
         <div className="sidebar-footer">
           <div className="admin-info"><p className="admin-name">{session.user.name}</p><p className="admin-role">Super Admin</p></div>
@@ -301,13 +287,13 @@ function SuperAdminView({ session, onLogout }) {
 
       <main className="admin-main">
         {message && <Notice type={message.includes("Success") ? "success" : "error"}>{message}</Notice>}
-
+        
         {activeTab === "sections" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="MASTER CONTROL" title="All Sections" description="Manage all admin accounts and sections." />
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th scope="col">#</th><th scope="col">Admin Name</th><th scope="col">Admin ID</th><th scope="col">Section</th><th scope="col" className="right">Action</th></tr></thead>
+                <thead><tr><th>#</th><th>Admin Name</th><th>Admin ID</th><th>Section</th><th className="right">Action</th></tr></thead>
                 <tbody>
                   {admins.map((a, i) => (
                     <tr key={a.id}>
@@ -336,7 +322,7 @@ function SuperAdminView({ session, onLogout }) {
               <div className="form-card-heading"><h3>Unblock IP Addresses</h3></div>
               <p style={{ marginBottom: "16px", fontSize: "14px", color: "var(--text-muted)" }}>If a legitimate user gets locked out, you can instantly clear the rate limits here.</p>
               <div className="button-group-mobile">
-                <button onClick={handleUnblockAll} disabled={unblocking} style={{ background: "#b45309", borderColor: "#b45309", color: "white" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
+                <button onClick={handleUnblockAll} disabled={unblocking} style={{ background: "#f59e0b", borderColor: "#f59e0b", color: "white" }}>{unblocking ? "Clearing..." : "Clear All Blocks"}</button>
                 <button onClick={fetchLogs} style={{ background: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white" }}>View Blocked Logs</button>
               </div>
             </div>
@@ -345,12 +331,12 @@ function SuperAdminView({ session, onLogout }) {
 
         {showLogs && (
           <div className="modal-overlay">
-            <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="logs-title" style={{ maxWidth: "800px" }}>
-              <div className="modal-header"><h2 id="logs-title">Security Logs</h2><button className="modal-close" aria-label="Close" onClick={() => setShowLogs(false)}>✕</button></div>
+            <div className="modal-content" style={{ maxWidth: "800px" }}>
+              <div className="modal-header"><h2>Security Logs</h2><button className="modal-close" aria-label="Close" onClick={() => setShowLogs(false)}>✕</button></div>
               <div className="modal-body">
                 {logs.length === 0 ? <p>No security logs found.</p> : (
                   <div className="table-wrap"><table className="data-table">
-                    <thead><tr><th scope="col">#</th><th scope="col">IP Address</th><th scope="col">Event</th><th scope="col">Date & Time</th></tr></thead>
+                    <thead><tr><th>#</th><th>IP Address</th><th>Event</th><th>Date & Time</th></tr></thead>
                     <tbody>{logs.map((log, i) => (
                       <tr key={log.id}>
                         <td data-label="#">{i + 1}</td>
@@ -368,14 +354,14 @@ function SuperAdminView({ session, onLogout }) {
 
         {inspectData && (
           <div className="modal-overlay">
-            <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="inspect-title">
-              <div className="modal-header"><h2 id="inspect-title">Section: {inspectData.section}</h2><button className="modal-close" aria-label="Close" onClick={() => setInspectData(null)}>✕</button></div>
+            <div className="modal-content">
+              <div className="modal-header"><h2>Section: {inspectData.section}</h2><button className="modal-close" aria-label="Close" onClick={() => setInspectData(null)}>✕</button></div>
               <div className="modal-body">
                 <div style={{ marginBottom: "20px" }}><p>Total Cash on Hand: <strong className="amount-green">{money(inspectData.cashOnHand)}</strong></p></div>
                 <h3>Students in this section ({inspectData.students.length})</h3>
                 <div className="table-wrap" style={{ maxHeight: "300px", overflowY: "auto" }}>
                   <table className="data-table">
-                    <thead><tr><th scope="col">#</th><th scope="col">Student ID</th><th scope="col">Name</th></tr></thead>
+                    <thead><tr><th>#</th><th>Student ID</th><th>Name</th></tr></thead>
                     <tbody>{inspectData.students.length === 0 ? (<tr><td colSpan="3">No students in this section yet.</td></tr>) : (inspectData.students.map((s, i) => (
                       <tr key={s.id}>
                         <td data-label="#">{i + 1}</td>
@@ -394,31 +380,28 @@ function SuperAdminView({ session, onLogout }) {
   );
 }
 
-/* ==================== ADMIN VIEW (SECTION) ==================== */
 function AdminView({ session, onLogout }) {
   const [report, setReport] = useState(null);
   const [payments, setPayments] = useState([]);
   const [expenses, setExpenses] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [approvals, setApprovals] = useState([]);
+  const [students, setStudents] = useState([]); 
+  const [approvals, setApprovals] = useState([]); 
   const [ledger, setLedger] = useState([]);
   const [secLogs, setSecLogs] = useState([]);
-
+  
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(true);
-
+  
   const [busyStudent, setBusyStudent] = useState(false);
   const [busyPayment, setBusyPayment] = useState(false);
   const [busyExpense, setBusyExpense] = useState(false);
   const [busyAction, setBusyAction] = useState(false);
-
-  const [activeTab, setActiveTab] = useState("overview");
+  
+  const [activeTab, setActiveTab] = useState("overview"); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-
-  const [showArchivedExpenses, setShowArchivedExpenses] = useState(false);
-
+  
   const itemsPerPage = 10;
   const [studentPage, setStudentPage] = useState(1);
   const [paymentPage, setPaymentPage] = useState(1);
@@ -446,41 +429,42 @@ function AdminView({ session, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-
+      
       alert("Password updated! Please log in again.");
       onLogout();
+      
     } catch (err) { alert(err.message); } finally { setChangingPass(false); }
   }
 
   async function call(path, method = "GET", body) {
     const options = { method, headers: { Authorization: `Bearer ${session.token}` } };
     if (body !== undefined) { options.headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
-
+    
     const res = await fetch(`${API}${path}`, options);
     let data;
     try { data = await res.json(); } catch { throw new Error("Invalid response."); }
-
+    
     if (res.status === 401) {
       alert("Your session has expired. Please log in again.");
       onLogout();
-      throw new Error("Session expired.");
+      return;
     }
 
     if (!res.ok) {
       throw new Error(data.error || "Something went wrong.");
     }
-
+    
     return data;
   }
 
-  async function loadAll(archivedExp = showArchivedExpenses) {
+  async function loadAll() {
     const [rep, pays, exps, studs, apps, ledg, secs] = await Promise.all([
-      call("/admin/report"),
-      call("/admin/payments"),
-      call(`/admin/expenses?archived=${archivedExp}`),
-      call("/admin/students"),
-      call("/admin/approvals"),
-      call("/admin/ledger"),
+      call("/admin/report"), 
+      call("/admin/payments"), 
+      call("/admin/expenses"), 
+      call("/admin/students"), 
+      call("/admin/approvals"), 
+      call("/admin/ledger"), 
       call("/admin/security-logs")
     ]);
     setReport(rep); setPayments(pays); setExpenses(exps); setStudents(studs); setApprovals(apps); setLedger(ledg); setSecLogs(secs);
@@ -493,12 +477,6 @@ function AdminView({ session, onLogout }) {
     })();
     return () => { active = false; };
   }, [session.token]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") setIsSidebarOpen(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   async function submit(path, body, reset, setBusy, isBusy) {
     if (isBusy) return;
@@ -546,15 +524,15 @@ function AdminView({ session, onLogout }) {
     try {
       const data = await call("/admin/reset-password", "POST", { studentId });
       setMessage(data.message); setMessageType("success");
-    } catch (err) {
-      setMessage(err.message); setMessageType("error");
-    } finally {
-      setBusyAction(false);
+    } catch (err) { 
+      setMessage(err.message); setMessageType("error"); 
+    } finally { 
+      setBusyAction(false); 
     }
   }
 
-  const totalPayments = payments.reduce((s, p) => s + Number(p.amount), 0);
-  const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const totalPayments = payments.reduce((s, p) => s + (p.is_deleted ? 0 : Number(p.amount)), 0);
+  const totalExpenses = expenses.reduce((s, e) => s + (e.is_deleted ? 0 : Number(e.amount)), 0);
 
   const studentTotalPages = Math.ceil(students.length / itemsPerPage) || 1;
   const currentStudents = students.slice((studentPage - 1) * itemsPerPage, studentPage * itemsPerPage);
@@ -573,15 +551,11 @@ function AdminView({ session, onLogout }) {
   const ledgerTotalPages = Math.ceil(filteredLedger.length / itemsPerPage) || 1;
   const currentLedgerItems = filteredLedger.slice((ledgerPage - 1) * itemsPerPage, ledgerPage * itemsPerPage);
 
-  const handleTabClick = (tab) => {
-    setActiveTab(tab);
-    setMessage("");
-    setIsSidebarOpen(false);
+  const handleTabClick = (tab) => { 
+    setActiveTab(tab); 
+    setMessage(""); 
+    setIsSidebarOpen(false); 
     setStudentPage(1); setPaymentPage(1); setExpensePage(1); setLedgerPage(1);
-  };
-
-  const activateOnKey = (tab) => (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTabClick(tab); }
   };
 
   if (showPasswordPrompt) {
@@ -591,11 +565,11 @@ function AdminView({ session, onLogout }) {
           <Brand />
           <PageHeader eyebrow="SECURITY ALERT" title="Set a New Password" description="Your password was reset by the Super Admin. Please create a new secure password." />
           <form className="login-form" onSubmit={handleChangePassword}>
-            <label htmlFor="admin-current-password">Current Password</label>
-            <input id="admin-current-password" type="password" autoComplete="current-password" placeholder="Enter current password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
-
-            <label htmlFor="admin-new-password">New Password</label>
-            <input id="admin-new-password" type="password" autoComplete="new-password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+            <label>Current Password</label>
+            <input type="password" placeholder="Enter current password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+            
+            <label>New Password</label>
+            <input type="password" placeholder="Enter new password" minLength="6" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
             <button className="login-button" type="submit" disabled={changingPass}>{changingPass ? "Saving..." : "Save Password"}</button>
           </form>
         </main>
@@ -607,7 +581,7 @@ function AdminView({ session, onLogout }) {
     <div className="admin-layout">
       <div className="mobile-header">
         <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>STI COLLEGE</strong><span>{session.user.section} ADMIN</span></div></div>
-        <button className="menu-btn" aria-label="Open menu" aria-expanded={isSidebarOpen} onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
+        <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>☰</button>
       </div>
 
       {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
@@ -615,22 +589,22 @@ function AdminView({ session, onLogout }) {
       <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
         <div className="sidebar-brand">
           <div className="brand"><div className="brand-mark">STI</div><div className="brand-copy"><strong>STI COLLEGE</strong><span>{session.user.section} ADMIN</span></div></div>
-          <button className="close-btn" aria-label="Close menu" onClick={() => setIsSidebarOpen(false)}>✕</button>
+          <button className="close-btn" onClick={() => setIsSidebarOpen(false)}>✕</button>
         </div>
-        <nav className="sidebar-nav" aria-label="Main menu">
-          <button className={activeTab === "overview" ? "nav-item active" : "nav-item"} aria-current={activeTab === "overview" ? "page" : undefined} onClick={() => handleTabClick("overview")}>Overview</button>
-
-          <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} aria-current={activeTab === "approvals" ? "page" : undefined} onClick={() => handleTabClick("approvals")}>
-            Approvals {approvals.length > 0 && <span className="nav-badge" aria-label={`${approvals.length} pending`}>{approvals.length}</span>}
+        <nav className="sidebar-nav">
+          <button className={activeTab === "overview" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("overview")}>Overview</button>
+          
+          <button className={activeTab === "approvals" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("approvals")}>
+            Approvals {approvals.length > 0 && <span className="nav-badge">{approvals.length}</span>}
           </button>
-
-          <button className={activeTab === "students" ? "nav-item active" : "nav-item"} aria-current={activeTab === "students" ? "page" : undefined} onClick={() => handleTabClick("students")}>Students</button>
-          <button className={activeTab === "ledger" ? "nav-item active" : "nav-item"} aria-current={activeTab === "ledger" ? "page" : undefined} onClick={() => handleTabClick("ledger")}>General Ledger</button>
-
-          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} aria-current={activeTab === "security" ? "page" : undefined} onClick={() => handleTabClick("security")}>Security Logs</button>
-
-          <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} aria-current={activeTab === "deposits" ? "page" : undefined} onClick={() => handleTabClick("deposits")}>Deposits</button>
-          <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} aria-current={activeTab === "expenses" ? "page" : undefined} onClick={() => handleTabClick("expenses")}>Expenses</button>
+          
+          <button className={activeTab === "students" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("students")}>Students</button>
+          <button className={activeTab === "ledger" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("ledger")}>General Ledger</button>
+          
+          <button className={activeTab === "security" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("security")}>Security Logs</button>
+          
+          <button className={activeTab === "deposits" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("deposits")}>Deposits</button>
+          <button className={activeTab === "expenses" ? "nav-item active" : "nav-item"} onClick={() => handleTabClick("expenses")}>Expenses</button>
         </nav>
         <div className="sidebar-footer">
           <div className="admin-info"><p className="admin-name">{session.user.name}</p><p className="admin-role">{session.user.section} Admin</p></div>
@@ -653,30 +627,30 @@ function AdminView({ session, onLogout }) {
               </div>
             )}
             <div className="section-heading" style={{ marginTop: "32px" }}><div><h2>Recent Activity</h2><p>Quick glance at the latest transactions.</p></div></div>
-
-            {/* CLICKABLE RECENT ACTIVITY */}
-            <div className="activity-item clickable" role="button" tabIndex={0} onClick={() => handleTabClick("deposits")} onKeyDown={activateOnKey("deposits")}>
+            
+            <div className="activity-item clickable" onClick={() => handleTabClick("deposits")}>
               <div className="activity-info"><h4>Total Deposits Recorded</h4><p>All payments saved in the database</p></div>
-              <div className="activity-amount" style={{ color: "#047857" }}>{payments.length} Transactions</div>
+              <div className="activity-amount" style={{ color: "#059669" }}>{payments.length} Transactions</div>
             </div>
 
-            <div className="activity-item clickable" role="button" tabIndex={0} onClick={() => handleTabClick("expenses")} onKeyDown={activateOnKey("expenses")}>
+            <div className="activity-item clickable" onClick={() => handleTabClick("expenses")}>
               <div className="activity-info"><h4>Total Expenses Logged</h4><p>All expenses saved in the database</p></div>
               <div className="activity-amount" style={{ color: "#dc2626" }}>{expenses.length} Records</div>
             </div>
-
+            
           </div>
         )}
 
         {activeTab === "security" && (
           <div className="tab-content fade-in">
-            <PageHeader eyebrow="PROTECTION" title="Security Logs" description="Manage students from your section who are locked out." />
+            <PageHeader eyebrow="PROTECTION" title="Security
+             Logs" description="Manage students from your section who are locked out." />
             {secLogs.length === 0 ? (
               <div className="empty-state"><h3>No lockouts</h3><p>All students in your section are safe.</p></div>
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th scope="col">#</th><th scope="col">Blocked ID / Info</th><th scope="col">IP Address</th><th scope="col">Date & Time</th><th scope="col" className="right">Action</th></tr></thead>
+                  <thead><tr><th>#</th><th>Blocked ID / Info</th><th>IP Address</th><th>Date & Time</th><th className="right">Action</th></tr></thead>
                   <tbody>
                     {secLogs.map((log, i) => {
                       const match = log.event_type.match(/ID:\s*([^)]+)/);
@@ -711,7 +685,7 @@ function AdminView({ session, onLogout }) {
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
-                  <thead><tr><th scope="col">#</th><th scope="col">Student Name</th><th scope="col">Student ID</th><th scope="col">Amount</th><th scope="col">Date & Time</th><th scope="col" className="right">Action</th></tr></thead>
+                  <thead><tr><th>#</th><th>Student Name</th><th>Student ID</th><th>Amount</th><th>Date & Time</th><th className="right">Action</th></tr></thead>
                   <tbody>
                     {approvals.map((a, i) => (
                       <tr key={a.id}>
@@ -721,7 +695,7 @@ function AdminView({ session, onLogout }) {
                         <td data-label="Amount" className="amount-green"><strong>{money(a.amount)}</strong></td>
                         <td data-label="Date & Time">{new Date(a.created_at).toLocaleString()}</td>
                         <td data-label="Action" className="right action-cell">
-                          <button className="btn-inspect" onClick={() => handleApproval(a.id, "approve")} disabled={busyAction} style={{ color: "#047857", borderColor: "#a7f3d0" }}>Approve</button>
+                          <button className="btn-inspect" onClick={() => handleApproval(a.id, "approve")} disabled={busyAction} style={{ color: "#059669", borderColor: "#a7f3d0" }}>Approve</button>
                           <button className="btn-delete" onClick={() => handleApproval(a.id, "reject")} disabled={busyAction}>Reject</button>
                         </td>
                       </tr>
@@ -738,8 +712,8 @@ function AdminView({ session, onLogout }) {
             <PageHeader eyebrow="FINANCIAL RECORD" title="General Ledger" description="A complete history of all money in and money out." />
 
             <div style={{ marginBottom: "20px", maxWidth: "400px" }}>
-              <label htmlFor="ledger-search">Filter by Student (Name or ID)</label>
-              <input id="ledger-search" type="text" placeholder="Search by Student ID or Name..." value={ledgerSearch} onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} style={{ marginBottom: 0 }} />
+              <label>Filter by Student (Name or ID)</label>
+              <input type="text" placeholder="Search by Student ID or Name..." value={ledgerSearch} onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} style={{ marginBottom: 0 }} />
             </div>
 
             {filteredLedger.length === 0 ? (
@@ -748,7 +722,7 @@ function AdminView({ session, onLogout }) {
               <>
                 <div className="table-wrap ledger-card">
                   <table className="data-table">
-                    <thead><tr><th scope="col">#</th><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col" className="right">Amount</th></tr></thead>
+                    <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Description</th><th className="right">Amount</th></tr></thead>
                     <tbody>
                       {currentLedgerItems.map((item, i) => (
                         <tr key={`${item.type}-${item.id}`} style={{ opacity: item.is_deleted ? 0.6 : 1 }}>
@@ -782,13 +756,13 @@ function AdminView({ session, onLogout }) {
         {activeTab === "students" && (
           <div className="tab-content fade-in">
             <PageHeader eyebrow="USER DIRECTORY" title={`${session.user.section} Students`} description="View and add students." />
-
+            
             <div className="form-card" style={{ marginBottom: "24px" }}>
-              <div className="form-card-heading"><span className="form-icon" aria-hidden="true">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
+              <div className="form-card-heading"><span className="form-icon">01</span><div><h3>Add student</h3><p>Create a new student account.</p></div></div>
               <form onSubmit={(e) => { e.preventDefault(); submit("/admin/students", student, () => setStudent({ studentId: "", name: "", password: "" }), setBusyStudent, busyStudent); }}>
-                <div><label htmlFor="add-student-id">Student ID</label><input id="add-student-id" inputMode="numeric" autoComplete="off" placeholder="e.g. 2024001" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required style={{ marginBottom: 0 }} /></div>
-                <div><label htmlFor="add-student-name">Full name</label><input id="add-student-name" autoComplete="off" placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required style={{ marginBottom: 0 }} /></div>
-                <div><label htmlFor="add-student-password">Password</label><input id="add-student-password" type="password" autoComplete="new-password" placeholder="Create a strong password" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required style={{ marginBottom: 0 }} /></div>
+                <div><label>Student ID</label><input placeholder="e.g. 2024001" value={student.studentId} onChange={(e) => setStudent({ ...student, studentId: e.target.value.replace(/[^0-9]/g, '') })} minLength="6" required style={{ marginBottom: 0 }} /></div>
+                <div><label>Full name</label><input placeholder="e.g. Juan Dela Cruz" value={student.name} onChange={(e) => setStudent({ ...student, name: e.target.value.replace(/[^a-zA-Z\s]/g, '') })} required style={{ marginBottom: 0 }} /></div>
+                <div><label>Password</label><input type="password" placeholder="Create a strong password" value={student.password} onChange={(e) => setStudent({ ...student, password: e.target.value })} minLength="6" required style={{ marginBottom: 0 }} /></div>
                 <button type="submit" disabled={busyStudent}>{busyStudent ? "Wait..." : "Add student"}</button>
               </form>
             </div>
@@ -799,7 +773,7 @@ function AdminView({ session, onLogout }) {
               <>
                 <div className="table-wrap">
                   <table className="data-table" style={{ minWidth: "100%" }}>
-                    <thead><tr><th scope="col">#</th><th scope="col">ID</th><th scope="col">Name</th><th scope="col">Account Created</th><th scope="col" className="right">Action</th></tr></thead>
+                    <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Account Created</th><th className="right">Action</th></tr></thead>
                     <tbody>
                       {currentStudents.map((s, i) => (
                         <tr key={s.id}>
@@ -827,11 +801,11 @@ function AdminView({ session, onLogout }) {
             <PageHeader eyebrow="TRANSACTIONS" title="All Deposits" description="Record payments and view student contributions." />
 
             <div className="form-card" style={{ marginBottom: "24px" }}>
-              <div className="form-card-heading"><span className="form-icon" aria-hidden="true">02</span><div><h3>Record payment</h3><p>Manually record a student's contribution.</p></div></div>
+              <div className="form-card-heading"><span className="form-icon">02</span><div><h3>Record payment</h3><p>Manually record a student's contribution.</p></div></div>
               <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/payments", payment, () => { setPayment({ studentId: "", amount: "" }); setShowDropdown(false); }, setBusyPayment, busyPayment); }}>
                 <div className="custom-dropdown-container">
-                  <label htmlFor="pay-student-id">Student ID</label>
-                  <input id="pay-student-id" inputMode="numeric" autoComplete="off" placeholder="Enter or select student ID" value={payment.studentId} onChange={(e) => { setPayment({ ...payment, studentId: e.target.value.replace(/[^0-9]/g, '') }); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} required style={{ marginBottom: 0 }} />
+                  <label>Student ID</label>
+                  <input placeholder="Enter or select student ID" value={payment.studentId} onChange={(e) => { setPayment({ ...payment, studentId: e.target.value.replace(/[^0-9]/g, '') }); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} required style={{ marginBottom: 0 }} />
                   {showDropdown && students.filter(s => s.student_id.includes(payment.studentId)).length > 0 && (
                     <ul className="custom-dropdown-list">
                       {students.filter(s => s.student_id.includes(payment.studentId)).map(s => (
@@ -843,7 +817,7 @@ function AdminView({ session, onLogout }) {
                     </ul>
                   )}
                 </div>
-                <div><label htmlFor="pay-amount">Amount (PHP)</label><input id="pay-amount" type="number" inputMode="decimal" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+                <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={payment.amount} onChange={(e) => setPayment({ ...payment, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
                 <button type="submit" disabled={busyPayment}>{busyPayment ? "Wait..." : "Record payment"}</button>
               </form>
             </div>
@@ -852,15 +826,24 @@ function AdminView({ session, onLogout }) {
               <>
                 <div className="table-wrap">
                   <table className="data-table">
-                    <thead><tr><th scope="col">#</th><th scope="col">ID</th><th scope="col">Name</th><th scope="col">Date & Time</th><th scope="col" className="right">Amount</th><th scope="col" className="right">Action</th></tr></thead>
+                    <thead><tr><th>#</th><th>ID</th><th>Name</th><th>Date & Time</th><th className="right">Amount</th><th className="right">Action</th></tr></thead>
                     <tbody>{currentPayments.map((p, i) => (
-                      <tr key={p.id}>
+                      <tr key={p.id} style={{ opacity: p.is_deleted ? 0.6 : 1 }}>
                         <td data-label="#">{(paymentPage - 1) * itemsPerPage + i + 1}</td>
                         <td data-label="ID" className="mono">{p.student_id}</td>
-                        <td data-label="Name">{p.name}</td>
+                        <td data-label="Name">
+                          {p.name}
+                          {p.is_deleted === 1 && <span className="badge" style={{ background: "#fee2e2", color: "#991b1b", marginLeft: "6px" }}>Deleted</span>}
+                        </td>
                         <td data-label="Date">{p.date}</td>
-                        <td data-label="Amount" className="right amount-green">{money(p.amount)}</td>
-                        <td data-label="Action" className="right action-cell"><button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button></td>
+                        <td data-label="Amount" className="right amount-green" style={{ textDecoration: p.is_deleted ? "line-through" : "none" }}>
+                          {money(p.amount)}
+                        </td>
+                        <td data-label="Action" className="right action-cell">
+                          {!p.is_deleted && (
+                            <button className="btn-delete" onClick={() => removeItem(`/admin/payments/${p.id}`, "payment")} disabled={busyAction}>Delete</button>
+                          )}
+                        </td>
                       </tr>
                     ))}</tbody>
                     <tfoot><tr><td colSpan="4"><strong>Total</strong></td><td className="right"><strong>{money(totalPayments)}</strong></td><td></td></tr></tfoot>
@@ -874,35 +857,21 @@ function AdminView({ session, onLogout }) {
 
         {activeTab === "expenses" && (
           <div className="tab-content fade-in">
-            <PageHeader
-              eyebrow="TRANSACTIONS"
-              title={showArchivedExpenses ? "Archived Expenses" : "All Expenses"}
-              description={showArchivedExpenses ? "Review deleted expense history." : "Log spending and track expenses."}
-              action={
-                <button
-                  className="button-secondary"
-                  onClick={() => { setShowArchivedExpenses(!showArchivedExpenses); setExpensePage(1); loadAll(!showArchivedExpenses); }}
-                >
-                  {showArchivedExpenses ? "← Back to Active" : "View Archived"}
-                </button>
-              }
-            />
+            <PageHeader eyebrow="TRANSACTIONS" title="All Expenses" description="Log spending and track expenses." />
 
-            {!showArchivedExpenses && (
-              <div className="form-card" style={{ marginBottom: "24px" }}>
-                <div className="form-card-heading"><span className="form-icon" aria-hidden="true">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
-                <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
-                  <div><label htmlFor="expense-description">Description</label><input id="expense-description" autoComplete="off" placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                  <div><label htmlFor="expense-amount">Amount (PHP)</label><input id="expense-amount" type="number" inputMode="decimal" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
-                  <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
-                </form>
-              </div>
-            )}
+            <div className="form-card" style={{ marginBottom: "24px" }}>
+              <div className="form-card-heading"><span className="form-icon">03</span><div><h3>Log expense</h3><p>Keep track of fund spending.</p></div></div>
+              <form className="two-inputs" onSubmit={(e) => { e.preventDefault(); submit("/admin/expenses", expense, () => setExpense({ description: "", amount: "" }), setBusyExpense, busyExpense); }}>
+                <div><label>Description</label><input placeholder="What is the expense for?" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+                <div><label>Amount (PHP)</label><input type="number" min="1" step="0.01" placeholder="0.00" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} required style={{ marginBottom: 0 }} /></div>
+                <button type="submit" disabled={busyExpense}>{busyExpense ? "Wait..." : "Save expense"}</button>
+              </form>
+            </div>
 
             {expenses.length === 0 ? (
               <div className="empty-state">
-                <h3>{showArchivedExpenses ? "No archived expenses" : "No expenses"}</h3>
-                <p>{showArchivedExpenses ? "You have no deleted records." : "Start by logging a new expense above."}</p>
+                <h3>No expenses</h3>
+                <p>Start by logging a new expense above.</p>
               </div>
             ) : (
               <>
@@ -910,31 +879,34 @@ function AdminView({ session, onLogout }) {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th scope="col">#</th>
-                        <th scope="col">Description</th>
-                        <th scope="col">Date</th>
-                        <th scope="col" className="right">Amount</th>
-                        {!showArchivedExpenses && <th scope="col" className="right">Action</th>}
+                        <th>#</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th className="right">Amount</th>
+                        <th className="right">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {currentExpenses.map((e, i) => (
-                        <tr key={e.id}>
+                        <tr key={e.id} style={{ opacity: e.is_deleted ? 0.6 : 1 }}>
                           <td data-label="#">{(expensePage - 1) * itemsPerPage + i + 1}</td>
-                          <td data-label="Description">{e.description}</td>
+                          <td data-label="Description">
+                            {e.description}
+                            {e.is_deleted === 1 && <span className="badge" style={{ background: "#fee2e2", color: "#991b1b", marginLeft: "6px" }}>Deleted</span>}
+                          </td>
                           <td data-label="Date">{e.date}</td>
-                          <td data-label="Amount" className="right amount-red">{money(e.amount)}</td>
-                          {!showArchivedExpenses && (
-                            <td data-label="Action" className="right action-cell">
+                          <td data-label="Amount" className="right amount-red" style={{ textDecoration: e.is_deleted ? "line-through" : "none" }}>
+                            {money(e.amount)}
+                          </td>
+                          <td data-label="Action" className="right action-cell">
+                            {!e.is_deleted && (
                               <button className="btn-delete" onClick={() => removeItem(`/admin/expenses/${e.id}`, "expense")} disabled={busyAction}>Delete</button>
-                            </td>
-                          )}
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
-                    {!showArchivedExpenses && (
-                      <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
-                    )}
+                    <tfoot><tr><td colSpan="3"><strong>Total</strong></td><td className="right"><strong>{money(totalExpenses)}</strong></td><td></td></tr></tfoot>
                   </table>
                 </div>
                 <Pagination currentPage={expensePage} totalPages={expenseTotalPages} onPageChange={setExpensePage} />
@@ -942,13 +914,12 @@ function AdminView({ session, onLogout }) {
             )}
           </div>
         )}
-        <footer className="page-footer">Class Fund Portal · {session.user.section} Admin · <LegalLinks /></footer>
+        <footer className="page-footer">Class Fund Portal · {session.user.section} Admin</footer>
       </main>
     </div>
   );
 }
 
-/* ==================== APP ROOT ==================== */
 function App() {
   const [studentId, setStudentId] = useState("");
   const [name, setName] = useState("");
@@ -958,9 +929,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState(null);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [agreed, setAgreed] = useState(false);
-
-  const [loginRole, setLoginRole] = useState("student");
+  
+  const [loginRole, setLoginRole] = useState("student"); 
 
   useEffect(() => {
     const saved = sessionStorage.getItem("classFundSession");
@@ -970,47 +940,43 @@ function App() {
   }, []);
 
   async function handleSubmit(e) {
-    e.preventDefault();
-    if (loading) return;
-    if (isRegistering && !agreed) {
-      setError("Please accept the Terms and Privacy Policy to register.");
-      return;
-    }
-    setError("");
+    e.preventDefault(); 
+    if (loading) return; 
+    setError(""); 
     setLoading(true);
-
+    
     const endpoint = isRegistering ? "/register-admin" : "/login";
     const body = isRegistering ? { studentId, name, password, section } : { studentId, password, loginRole };
-
+    
     try {
       const res = await fetch(`${API}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
-
-      if (!res.ok || data.error) {
-        setError(data.error || "Invalid ID or password");
+      
+      if (!res.ok || data.error) { 
+        setError(data.error || "Invalid ID or password"); 
         setLoading(false);
-        return;
+        return; 
       }
-
-      if (isRegistering) {
-        setIsRegistering(false);
-        setError("Admin created! Log in.");
-      } else if (data.token) {
-        sessionStorage.setItem("classFundSession", JSON.stringify(data));
-        setSession(data);
+      
+      if (isRegistering) { 
+        setIsRegistering(false); 
+        setError("Admin created! Log in."); 
+      } else if (data.token) { 
+        sessionStorage.setItem("classFundSession", JSON.stringify(data)); 
+        setSession(data); 
       } else {
         setError("Invalid ID or password");
       }
-    } catch {
-      setError("Cannot reach server.");
-    } finally {
-      setLoading(false);
+    } catch { 
+      setError("Cannot reach server."); 
+    } finally { 
+      setLoading(false); 
     }
   }
 
   function handleLogout() {
-    sessionStorage.removeItem("classFundSession");
-    setSession(null); setStudentId(""); setName(""); setPassword(""); setSection(""); setError(""); setAgreed(false);
+    sessionStorage.removeItem("classFundSession"); 
+    setSession(null); setStudentId(""); setName(""); setPassword(""); setSection(""); setError("");
   }
 
   if (session && session.user.role === 2) return <SuperAdminView session={session} onLogout={handleLogout} />;
@@ -1021,7 +987,7 @@ function App() {
     <div className="student-layout">
       <main className="container login-container">
         <Brand />
-
+        
         {!isRegistering && (
           <div className="segmented" role="tablist">
             <button type="button" role="tab" aria-selected={loginRole === "student"} className={loginRole === "student" ? "segmented-btn active" : "segmented-btn"} onClick={() => setLoginRole("student")}>Student</button>
@@ -1030,46 +996,30 @@ function App() {
         )}
 
         <Notice type={error.includes("created") ? "success" : "error"}>{error}</Notice>
-
+        
         <form className="login-form" onSubmit={handleSubmit}>
-          <label htmlFor="login-id">ID</label>
-          <input
-            id="login-id"
-            autoComplete="username"
-            placeholder={isRegistering ? "Enter Admin ID" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"}
-            value={studentId}
-            onChange={e => setStudentId(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))}
+          <label>ID</label>
+          <input 
+            placeholder={isRegistering ? "Enter Admin ID" : loginRole === "student" ? "Enter student ID" : "Enter admin ID"} 
+            value={studentId} 
+            onChange={e => setStudentId(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} 
             minLength={isRegistering ? 6 : undefined}
-            required
+            required 
           />
-
+          
           {isRegistering && (
             <>
-              <label htmlFor="register-name">Full Name</label>
-              <input id="register-name" autoComplete="name" placeholder="Enter your full name" value={name} onChange={e => setName(e.target.value.replace(/[^a-zA-Z\s]/g, ''))} required />
-              <label htmlFor="register-section">Section</label>
-              <input id="register-section" autoComplete="off" placeholder="e.g. BSIT 1A" value={section} onChange={e => setSection(e.target.value)} required />
+              <label>Full Name</label>
+              <input placeholder="Enter your full name" value={name} onChange={e => setName(e.target.value.replace(/[^a-zA-Z\s]/g, ''))} required />
+              <label>Section</label><input placeholder="e.g. BSIT 1A" value={section} onChange={e => setSection(e.target.value)} required />
             </>
           )}
-
-          <label htmlFor="login-password">Password</label>
-          <input id="login-password" type="password" autoComplete={isRegistering ? "new-password" : "current-password"} placeholder={isRegistering ? "Create a strong password" : "Enter your password"} value={password} onChange={e => setPassword(e.target.value)} minLength={isRegistering ? 6 : undefined} required />
-
-          {isRegistering && (
-            <div className="consent-row">
-              <input id="agree-terms" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-              <label htmlFor="agree-terms">
-                I agree to the <LegalLinks separator=" and " />, and I have permission from my class to record student information.
-              </label>
-            </div>
-          )}
-
+          
+          <label>Password</label>
+          <input type="password" placeholder={isRegistering ? "Create a strong password" : "Enter your password"} value={password} onChange={e => setPassword(e.target.value)} minLength={isRegistering ? 6 : undefined} required />
+          
           <button className="login-button" type="submit" disabled={loading}>{loading ? "Wait..." : isRegistering ? "Register" : "Sign in"}</button>
         </form>
-
-        {!isRegistering && (
-          <p className="legal-note">By signing in, you agree to the <LegalLinks separator=" and " />.</p>
-        )}
 
         <div className="login-note" style={{ marginTop: '16px', textAlign: 'center' }}>
           {isRegistering ? (
@@ -1077,9 +1027,9 @@ function App() {
           ) : loginRole === "admin" ? (
             <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
               Don't have an administrator account?{" "}
-              <button type="button" className="link-button" onClick={() => { setIsRegistering(true); setError(""); }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); setIsRegistering(true); setError(""); }} style={{ color: "var(--brand-accent)", fontWeight: "600", textDecoration: "none" }}>
                 Register here
-              </button>
+              </a>
             </p>
           ) : (
             <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>

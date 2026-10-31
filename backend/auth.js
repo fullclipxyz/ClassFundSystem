@@ -26,12 +26,10 @@ async function requireLogin(req, res, next) {
     );
     const u = rows[0];
     
-    // Check if user exists, is active, and token is valid
     if (!u || !u.is_active || u.token_version !== decoded.tv) {
       return res.status(401).json({ error: "Session expired. Please sign in again." });
     }
 
-    // Force password change if default
     if (u.is_default_password === 1 && !PASSWORD_RESET_ALLOWED_PATHS.has(req.path)) {
       return res.status(403).json({
         error: "You must change your password before continuing.",
